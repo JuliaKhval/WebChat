@@ -1,38 +1,40 @@
 <template>
-  <nav>
-    <h2>Чат</h2>
-    <button @click="logout">Выйти</button>
+  <nav v-if="authStore.isAuthenticated && authStore.currentUser.username">
+    <div class="navbar">
+      <span>Пользователь: {{ authStore.currentUser.username }}</span>
+      <button @click="handleLogout">Выйти</button>
+    </div>
   </nav>
 </template>
 
-<script>
+<script setup>
 import { useAuthStore } from '../stores/auth'
+import { useRouter } from 'vue-router'
 
-export default {
-  setup() {
-    const authStore = useAuthStore()
+const router = useRouter()
+const authStore = useAuthStore()
 
-    const logout = () => {
-      authStore.logout()
-      window.location.href = '/login'
-    }
-
-    return { logout }
+const handleLogout = async () => {
+  try {
+    await authStore.logout()
+    router.push('/login') // Явное перенаправление
+  } catch (error) {
+    console.error('Ошибка при выходе:', error)
   }
 }
 </script>
 
 <style scoped>
-nav {
+.navbar {
+  padding: 10px;
+  background: #f0f0f0;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid #ddd;
 }
 
-button {
+.navbar button {
   padding: 5px 10px;
   background: #f44336;
   color: white;
