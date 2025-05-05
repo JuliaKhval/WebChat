@@ -5,10 +5,25 @@ import ChatPage from '../pages/ChatPage.vue'
 import { useAuthStore } from '../stores/auth'
 
 const routes = [
-    { path: '/login', component: LoginPage },
-    { path: '/register', component: RegisterPage },
     {
         path: '/',
+        redirect: '/login'
+    },
+    {
+        path: '/login',
+        name: 'Login',
+        component: LoginPage,
+        meta: { requiresGuest: true }
+    },
+    {
+        path: '/register',
+        name: 'Register',
+        component: RegisterPage,
+        meta: { requiresGuest: true }
+    },
+    {
+        path: '/chat',
+        name: 'Chat',
         component: ChatPage,
         meta: { requiresAuth: true }
     }
@@ -19,15 +34,16 @@ const router = createRouter({
     routes
 })
 
-router.beforeEach((to, from, next) => {
+router.beforeEach(async (to) => {
     const authStore = useAuthStore()
+    await authStore.initialize()
 
     if (to.meta.requiresAuth && !authStore.isAuthenticated) {
-        next('/login')
-    } else if ((to.path === '/login' || to.path === '/register') && authStore.isAuthenticated) {
-        next('/')
-    } else {
-        next()
+        return '/login'
+    }
+
+    if (to.meta.requiresGuest && authStore.isAuthenticated) {
+        return '/chat'
     }
 })
 
