@@ -1,86 +1,187 @@
 <template>
-  <div class="chat-container">
-    <div class="messages">
-      <ChatMessage
-          v-for="(message, index) in messages"
-          :key="index"
-          :message="message"
-      />
+  <div class="chat-app">
+    <UserList
+        :chats="userChats"
+        :selected-chat="currentChat"
+        @select-chat="openChat"
+    />
+
+    <div class="chat-window">
+      <div v-if="currentChat" class="active-chat">
+        <div class="chat-header">
+          Чат с {{ currentChat.receiverUsername }}
+        </div>
+
+        <div class="messages">
+          <Message
+              v-for="message in currentMessages"
+              :key="message.id"
+              :message="message"
+              :current-user-id="authStore.currentUser.id"
+          />
+        </div>
+
+        <div class="message-input">
+          <input
+              v-model="messageContent"
+              placeholder="Введите сообщение..."
+              @keyup.enter="sendMessage"
+          >
+          <button @click="sendMessage">
+            Отправить
+          </button>
+        </div>
+      </div>
+
+      <div v-else class="no-chat">
+        <p>Выберите чат для начала общения</p>
+      </div>
     </div>
-    <form @submit.prevent="sendMessage" class="message-form">
-      <input v-model="newMessage" placeholder="Введите сообщение" required>
-      <button type="submit">Отправить</button>
-    </form>
   </div>
 </template>
 
 <script>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '../stores/auth'
-import ChatMessage from '../components/ChatMessage.vue'
+import api from '../api'
+import Message from '../components/ChatMessage.vue'
+import UserList from '../components/UserList.vue'
 
 export default {
-  components: { ChatMessage },
+  components: { Message, UserList },
   setup() {
     const authStore = useAuthStore()
-    const newMessage = ref('')
-    const messages = ref([])
+    const userChats = ref([])
+    const currentChat = ref(null)
+    const messageContent = ref('')
+    const messages = ref({})
 
-    // В реальном приложении здесь будет подключение к WebSocket или API
-    const mockMessages = [
-      { username: 'user1', text: 'Привет!', time: '12:00' },
-      { username: authStore.user?.username, text: 'Привет! Как дела?', time: '12:01' },
-      { username: 'user1', text: 'Отлично, спасибо!', time: '12:02' }
-    ]
-
-    onMounted(() => {
-      messages.value = mockMessages
-    })
-
-    const sendMessage = () => {
-      if (newMessage.value.trim()) {
-        messages.value.push({
-          username: authStore.user?.username,
-          text: newMessage.value,
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        })
-        newMessage.value = ''
+    const loadChats = async () => {
+      try {
+        const response = await api.getUserChats(authStore.currentUser.id)
+        userChats.value = response.data
+      } catch (error) {
+        console.error('Ошибка загрузки чатов:', error)
       }
     }
 
-    return { newMessage, messages, sendMessage }
+    const openChat = async (chat) => {
+      currentChat.value = chat
+      if (!messages.value[chat.id]) {
+        await loadMessages(chat.id)
+      }
+    }
+
+    const loadMessages = async (chatId) => {
+      try {
+        const response = await api.getChatMessages(chatId)
+        messages.value = {
+          ...messages.value,
+          [chatId]: response.data
+        }
+      } catch (error) {
+        console.error('Ошибка загрузки сообщений:', error)
+      }
+    }
+
+    const sendMessage = async () => {
+      if (!messageContent.value.trim() || !currentChat.value) return
+
+      try {
+        await api.sendMessage(
+            currentChat.value.id,
+            authStore.currentUser.id,
+            messageContent.value
+        )
+
+        await loadMessages(currentChat.value.id)
+        messageContent.value = ''
+      } catch (error) {
+        console.error('Ошибка отправки сообщения:', error)
+      }
+    }
+
+    const currentMessages = computed(() => {
+      return currentChat.value
+          ? messages.value[currentChat.value.id] || []
+          : []
+    })
+
+    onMounted(() => {
+      loadChats()
+    })
+
+    return {
+      authStore,
+      userChats,
+      currentChat,
+      messageContent,
+      currentMessages,
+      openChat,
+      sendMessage
+    }
   }
 }
 </script>
 
+
 <style scoped>
-.chat-container {
+.chat-app {
+  display: flex;
+  height: calc(100vh - 60px);
+}
+
+.chat-window {
+  flex: 1;
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 100px);
+}
+
+.active-chat {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.no-chat {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  color: #999;
+}
+
+.chat-header {
+  padding: 15px;
+  border-bottom: 1px solid #e0e0e0;
+  font-weight: bold;
+  text-align: center;
 }
 
 .messages {
   flex: 1;
+  padding: 15px;
   overflow-y: auto;
-  padding: 10px;
-}
-
-.message-form {
   display: flex;
-  padding: 10px;
-  border-top: 1px solid #eee;
+  flex-direction: column;
+  gap: 10px;
 }
 
-.message-form input {
+.message-input {
+  display: flex;
+  padding: 15px;
+  border-top: 1px solid #e0e0e0;
+}
+
+.message-input input {
   flex: 1;
   padding: 10px;
-  margin-right: 10px;
   border: 1px solid #ddd;
   border-radius: 4px;
+  margin-right: 10px;
 }
 
-.message-form button {
+.message-input button {
   padding: 10px 20px;
   background: #4CAF50;
   color: white;

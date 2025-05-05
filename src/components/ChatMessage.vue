@@ -1,32 +1,45 @@
 <template>
   <div :class="['message', { 'own-message': isOwnMessage }]">
     <div class="message-header">
-      <strong>{{ message.username }}</strong>
-      <span>{{ message.time }}</span>
+      <strong>{{ message.sender }}</strong>
+      <span>{{ formatDate(message.createdDataTime) }}</span>
     </div>
-    <p>{{ message.text }}</p>
+    <div class="message-content">
+      {{ message.content }}
+    </div>
   </div>
 </template>
 
 <script>
 import { computed } from 'vue'
-import { useAuthStore } from '../stores/auth'
 
 export default {
   props: {
     message: {
       type: Object,
       required: true
+    },
+    currentUserId: {
+      type: [String, Number],
+      required: true
     }
   },
   setup(props) {
-    const authStore = useAuthStore()
+    const isOwnMessage = computed(() => props.message.sender === props.currentUserId)
 
-    const isOwnMessage = computed(() => {
-      return props.message.username === authStore.user?.username
-    })
+    const formatDate = (dateString) => {
+      return new Date(dateString).toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+        day: '2-digit',
+        month: '2-digit'
+      })
+    }
 
-    return { isOwnMessage }
+    return {
+      isOwnMessage,
+      formatDate
+    }
   }
 }
 </script>
@@ -38,10 +51,11 @@ export default {
   border-radius: 5px;
   background: #f1f1f1;
   max-width: 70%;
+  align-self: flex-start;
 }
 
-.own-message {
-  margin-left: auto;
+.message.own-message {
+  align-self: flex-end;
   background: #e3f2fd;
 }
 
@@ -51,5 +65,9 @@ export default {
   margin-bottom: 5px;
   font-size: 0.8em;
   color: #666;
+}
+
+.message-content {
+  word-wrap: break-word;
 }
 </style>
