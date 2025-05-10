@@ -12,7 +12,7 @@ export const useAuthStore = defineStore('auth', () => {
     const isAuthenticated = computed(() => !!token.value)
 
     async function initialize() {
-        const authData = localStorage.getItem('auth')
+        const authData = sessionStorage.getItem('auth')
         if (authData) {
             try {
                 const parsed = JSON.parse(authData)
@@ -43,7 +43,7 @@ export const useAuthStore = defineStore('auth', () => {
                 username: username
             }
 
-            localStorage.setItem('auth', JSON.stringify({
+            sessionStorage.setItem('auth', JSON.stringify({
                 token: token.value,
                 userId: currentUser.value.id,
                 username: currentUser.value.username
@@ -85,7 +85,7 @@ export const useAuthStore = defineStore('auth', () => {
     async function clearAuthData() {
         token.value = null
         currentUser.value = { id: null, username: '' }
-        localStorage.removeItem('auth')
+        sessionStorage.removeItem('auth')
         delete axios.defaults.headers.common['Authorization']
     }
 
