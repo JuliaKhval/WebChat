@@ -2,6 +2,10 @@ import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import App from './App.vue'
 import router from './router'
+import axios from 'axios'
+
+// Настройка axios
+axios.defaults.baseURL = 'http://messenger.somee.com'
 
 const app = createApp(App)
 app.use(createPinia())

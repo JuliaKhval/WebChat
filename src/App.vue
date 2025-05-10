@@ -1,27 +1,21 @@
 <template>
   <div id="app">
-    <Navbar v-if="isAuthenticated" />
+    <Navbar v-if="authStore.isAuthenticated" />
     <router-view />
   </div>
 </template>
 
-<script>
+<script setup>
 import Navbar from './components/Navbar.vue'
-import { mapState } from 'pinia'
 import { useAuthStore } from './stores/auth'
 
-export default {
-  components: { Navbar },
-  computed: {
-    ...mapState(useAuthStore, ['isAuthenticated'])
-  }
-}
+const authStore = useAuthStore()
 </script>
 
 <style>
 #app {
   font-family: Avenir, Helvetica, Arial, sans-serif;
-  max-width: 800px;
+  max-width: 1200px;
   margin: 0 auto;
   padding: 20px;
 }

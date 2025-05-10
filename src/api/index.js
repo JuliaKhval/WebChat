@@ -36,8 +36,8 @@ export default {
     getChatMessages(chatId) {
         return apiClient.get(`/message/${chatId}/messages`)
     },
-    sendMessage(chatId, userId, text) {
-        return apiClient.post(`/message/${chatId}/messages/${userId}/Add`, { text })
+    sendMessage(chatId, userId, content) {
+        return apiClient.post(`/message/${chatId}/messages/${userId}/Add`, { content })
     },
     editMessage(chatId, messageId, newText) {
         return apiClient.put(`/message/${chatId}/messages/${messageId}`, { text: newText })
