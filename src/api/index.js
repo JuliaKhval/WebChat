@@ -1,7 +1,7 @@
 import axios from 'axios'
 
 const apiClient = axios.create({
-    baseURL: 'http://messenger.somee.com',
+    baseURL: 'https://messengertester.somee.com',
     withCredentials: false,
     headers: {
         Accept: 'application/json',
