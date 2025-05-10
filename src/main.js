@@ -5,7 +5,7 @@ import router from './router'
 import axios from 'axios'
 
 // Настройка axios
-axios.defaults.baseURL = 'http://messenger.somee.com'
+axios.defaults.baseURL = 'https://messengertester.somee.com'
 
 const app = createApp(App)
 app.use(createPinia())
