@@ -47,7 +47,7 @@ import { useAuthStore } from '../stores/auth'
 import api from '../api'
 import Message from '../components/ChatMessage.vue'
 import UserList from '../components/UserList.vue'
-import { useChatHub } from '../api/signalr.js'
+import { signalr } from '../api/signalr.js'
 
 export default {
   components: { Message, UserList },
@@ -58,6 +58,7 @@ export default {
     const messageContent = ref('')
     const messages = ref({})
     const messagesContainer = ref(null)
+
 
     // Инициализация SignalR
     const {
@@ -157,7 +158,7 @@ export default {
 
     const leaveChat = async (chatId, userId) => {
       try {
-        await connection.invoke('LeaveChat', chatId.toString(), userId.toString())
+        await signalr.connection.invoke('LeaveChat', chatId.toString(), userId.toString())
       } catch (error) {
         console.error('Ошибка выхода из чата:', error)
       }
