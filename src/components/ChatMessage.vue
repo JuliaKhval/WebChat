@@ -1,13 +1,11 @@
 <template>
-  <div :class="['message', { 'own-message': isOwnMessage }]">
+  <div
+      :class="['message', { 'own-message': isOwnMessage }]"
+      @contextmenu.prevent="toggleMenu"
+  >
     <div class="message-header">
       <strong>{{ message.sender }}</strong>
       <span>{{ formatDate(message.createdDataTime) }}</span>
-
-      <!-- Кнопка контекстного меню -->
-      <button v-if="isOwnMessage" class="context-menu-btn" @click="toggleMenu">
-        ⋮
-      </button>
     </div>
 
     <div class="message-content">
@@ -24,6 +22,7 @@
 
 <script>
 import { computed, ref } from 'vue'
+import { useAuthStore } from '@/stores/auth'
 
 export default {
   props: {
@@ -45,16 +44,27 @@ export default {
     }
   },
   setup(props) {
-    console.log('message.sender:', props.message.sender)
-    console.log('authStore username:', authStore.currentUser.username)
-    console.log('isOwnMessage:', isOwnMessage.value)
-    const isOwnMessage = computed(() => props.message.sender === props.currentUserId)
+    const authStore = useAuthStore() // ✅ Теперь внутри setup()
     const showContextMenu = ref(false)
 
+    // --- 1. Проверка: своё ли сообщение ---
+    const isOwnMessage = computed(() => {
+      if (!props.message.sender || !authStore.currentUser) {
+        return false
+      }
+
+      const sender = String(props.message.sender).trim().toLowerCase()
+      const current = String(authStore.currentUser.username || authStore.currentUser).trim().toLowerCase()
+
+      return sender === current
+    })
+
+    // --- 2. Меню ---
     const toggleMenu = () => {
       showContextMenu.value = !showContextMenu.value
     }
 
+    // --- 3. Редактирование ---
     const editMessage = () => {
       const newText = prompt('Измените сообщение:', props.message.content)
       if (newText && newText.trim() !== props.message.content) {
@@ -62,13 +72,16 @@ export default {
       }
     }
 
+    // --- 4. Удаление ---
     const deleteMessage = () => {
       if (confirm('Вы уверены, что хотите удалить это сообщение?')) {
         props.onDelete()
       }
     }
 
+    // --- 5. Формат даты ---
     const formatDate = (dateString) => {
+      if (!dateString) return ''
       return new Date(dateString).toLocaleTimeString([], {
         hour: '2-digit',
         minute: '2-digit',
@@ -77,19 +90,26 @@ export default {
       })
     }
 
+    // --- Отладка ---
+    console.log('message.sender:', props.message.sender)
+    console.log('authStore currentUser:', authStore.currentUser)
+    console.log('isOwnMessage:', isOwnMessage.value)
+
+    // --- Возвращаем всё в шаблон ---
     return {
       isOwnMessage,
       showContextMenu,
       toggleMenu,
       editMessage,
       deleteMessage,
-      formatDate
+      formatDate // ✅ Обязательно добавляем сюда!
     }
   }
 }
 </script>
 
 <style scoped>
+/* Твои стили остаются без изменений */
 .message {
   position: relative;
   border: 1px solid #eee;
@@ -97,8 +117,14 @@ export default {
   border-radius: 8px;
   background-color: #f9f9f9;
   max-width: 70%;
+  align-self: flex-start; /* по умолчанию слева */
+  margin-bottom: 10px;
 }
 
+.own-message {
+  align-self: flex-end; /* мои справа */
+  background-color: #dcf8c6;
+}
 
 .message-header {
   display: flex;
@@ -106,13 +132,6 @@ export default {
   align-items: center;
   font-size: 0.9em;
   margin-bottom: 5px;
-}
-
-.context-menu-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-size: 1.2em;
 }
 
 .context-menu {
@@ -124,6 +143,7 @@ export default {
   border-radius: 4px;
   z-index: 10;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  min-width: 120px;
 }
 
 .context-menu button {
