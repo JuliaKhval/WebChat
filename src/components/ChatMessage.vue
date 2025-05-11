@@ -46,6 +46,10 @@ export default {
     }
   },
   setup(props) {
+    console.log('authStore.currentUser:', authStore.currentUser)
+    console.log('message.sender:', props.message.sender)
+    console.log('authStore username:', authStore.currentUser.username)
+    console.log('isOwnMessage:', isOwnMessage.value)
     const showContextMenu = ref(false)
 
     // Определяем, своё ли сообщение
