@@ -65,7 +65,7 @@ const messageInput = ref(null)
 
 // SignalR Connection
 const connection = new signalR.HubConnectionBuilder()
-    .withUrl("https://messengertester.somee.com/chatHub ", {
+    .withUrl("https://messengertester.somee.com/chatHub", {
       accessTokenFactory: () => {
         const authData = sessionStorage.getItem('auth')
         return authData ? JSON.parse(authData).token : null
