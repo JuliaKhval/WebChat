@@ -2,24 +2,29 @@
   <div class="chat-app">
     <UserList
         :chats="userChats"
-        :selected-chat="currentChat"
-        @select-chat="openChat"
+        :selected-chat="currentChatId"
+        @select-chat="selectChat"
     />
 
     <div class="chat-window">
-      <div v-if="currentChat" class="active-chat">
+      <div v-if="currentChatId" class="active-chat">
         <div class="chat-header">
-          Чат с {{ currentChat.receiverUsername }}
+          Чат {{ currentChatId }}
         </div>
 
         <div ref="messagesContainer" class="messages">
           <Message
-              v-for="message in currentMessages"
+              v-for="message in messages"
               :key="message.id"
-              :message="message"
-              :current-user-id="authStore.currentUser.id"
-              @edit="editMessage(currentChat.id, message.id, $event)"
-              @delete="deleteMessage(currentChat.id, message.id)"
+              :message="{
+              id: message.id,
+              sender: message.userId,
+              content: message.content,
+              createdDataTime: message.createdAt || new Date().toISOString()
+            }"
+              :current-user="currentUserId"
+              @edit="editMessage(currentChatId, message.id, $event)"
+              @delete="deleteMessage(currentChatId, message.id)"
           />
         </div>
 
@@ -41,125 +46,190 @@
     </div>
   </div>
 </template>
+
 <script>
-import { ref, computed, onMounted, nextTick } from 'vue'
-import { useAuthStore } from '../stores/auth'
-import api from '../api'
+import { ref, onMounted, nextTick } from 'vue'
 import Message from '../components/ChatMessage.vue'
 import UserList from '../components/UserList.vue'
-import signalr from '../api/signalr.js'
 
 export default {
   components: { Message, UserList },
   setup() {
-    const authStore = useAuthStore()
-    const userChats = ref([])
-    const currentChat = ref(null)
-    const messageContent = ref('')
-    const messages = ref({})
-    const messagesContainer = ref(null)
+    // Ваши существующие переменные
+    let connection = null;
+    const currentUserId = ref(localStorage.getItem("currentUserId") || null);
+    const currentChatId = ref(null);
+    const messageContent = ref('');
+    const messages = ref([]);
+    const messagesContainer = ref(null);
+    const userChats = ref([]);
 
-    const loadChats = async () => {
+    // Ваши существующие SignalR функции
+    async function connectSignalR() {
+      const token = localStorage.getItem("token");
+
+      connection = new signalR.HubConnectionBuilder()
+          .withUrl("https://messengertester.somee.com/chatHub", {
+            accessTokenFactory: () => token
+          })
+          .build();
+
+      connection.on("ReceiveMessage", (chatId, userId, message) => {
+        if (chatId === currentChatId.value) {
+          addMessageToDOM(chatId, userId, message);
+        }
+      });
+
+      connection.on("MessageEdited", (chatId, messageId, newText) => {
+        const index = messages.value.findIndex(m => m.id === messageId);
+        if (index !== -1) {
+          messages.value[index].content = newText;
+        }
+      });
+
+      connection.on("MessageDeleted", (chatId, messageId) => {
+        messages.value = messages.value.filter(m => m.id !== messageId);
+      });
+
       try {
-        const response = await api.getUserChats(authStore.currentUser.id)
-        userChats.value = response.data
-      } catch (error) {
-        console.error('Ошибка загрузки чатов:', error)
+        await connection.start();
+        console.log("SignalR подключён");
+      } catch (err) {
+        console.error("Ошибка подключения к SignalR:", err);
       }
     }
 
-    const openChat = async (chat) => {
-      currentChat.value = chat
+    async function addMessageToDOM(chatId, userId, message, messageId = null) {
+      messages.value.push({
+        id: messageId,
+        userId,
+        content: message,
+        createdAt: new Date().toISOString()
+      });
+
+      await nextTick(() => {
+        messagesContainer.value?.scrollTo({
+          top: messagesContainer.value.scrollHeight,
+          behavior: "smooth"
+        });
+      });
+    }
+
+    async function loadChats(userId) {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`https://messengertester.somee.com/chat/${userId}/chats`, {
+        headers: { 'Authorization': 'Bearer ' + token }
+      });
+
+      if (res.ok) {
+        userChats.value = await res.json();
+      } else {
+        console.error("Ошибка загрузки чатов");
+      }
+    }
+
+    async function selectChat(chatId) {
+      currentChatId.value = chatId;
+      await loadMessages(chatId);
+
       try {
-        await signalr.connection.invoke("JoinChat", chat.id.toString(), authStore.currentUser.id.toString());
-        await loadMessages(chat.id);
+        await connection.invoke("JoinChat", chatId.toString(), currentUserId.value.toString());
       } catch (err) {
         console.error("Ошибка при выборе чата:", err);
       }
-      if (!messages.value[chat.id]) {
-        await loadMessages(chat.id)
-      }
     }
 
-    const loadMessages = async (chatId) => {
-      try {
-        const response = await api.getChatMessages(chatId)
-        messages.value = {
-          ...messages.value,
-          [chatId]: response.data
-        }
+    async function loadMessages(chatId) {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`https://messengertester.somee.com/message/${chatId}/messages`, {
+        headers: { 'Authorization': 'Bearer ' + token }
+      });
 
-        nextTick(() => {
+      if (res.ok) {
+        messages.value = await res.json();
+        await nextTick(() => {
           messagesContainer.value?.scrollTo({
             top: messagesContainer.value.scrollHeight,
             behavior: "smooth"
-          })
-        })
-      } catch (error) {
-        console.error('Ошибка загрузки сообщений:', error)
+          });
+        });
+      } else {
+        console.error("Ошибка загрузки сообщений");
       }
     }
 
-    const sendMessage = async () => {
-      if (!messageContent.value.trim() || !currentChat.value) return
+    async function sendMessage() {
+      if (!currentChatId.value) {
+        alert("Выберите чат");
+        return;
+      }
 
-      try {
-        await api.sendMessage(
-            currentChat.value.id,
-            authStore.currentUser.id,
-            messageContent.value
-        )
+      const content = messageContent.value.trim();
+      if (!content) return;
 
-        await loadMessages(currentChat.value.id)
-        messageContent.value = ''
+      const token = localStorage.getItem("token");
+      const res = await fetch(`https://messengertester.somee.com/message/${currentChatId.value}/messages/${currentUserId.value}/Add`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + token
+        },
+        body: JSON.stringify({ content })
+      });
 
-        nextTick(() => {
-          messagesContainer.value?.scrollTo({
-            top: messagesContainer.value.scrollHeight,
-            behavior: "smooth"
-          })
-        })
-      } catch (error) {
-        console.error('Ошибка отправки сообщения:', error)
+      if (res.ok) {
+        messageContent.value = "";
+      } else {
+        alert("Ошибка отправки сообщения");
       }
     }
 
-    const editMessage = async (chatId, messageId, newText) => {
-      try {
-        await api.editMessage(chatId, messageId, { content: newText })
-        await loadMessages(chatId)
-      } catch (error) {
-        console.error('Ошибка редактирования сообщения:', error)
+    async function editMessage(chatId, messageId, newText) {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`https://messengertester.somee.com/message/${chatId}/messages/${messageId}/Edit`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + token
+        },
+        body: JSON.stringify(newText)
+      });
+
+      if (!res.ok) {
+        alert("Ошибка изменения сообщения");
       }
     }
 
-    const deleteMessage = async (chatId, messageId) => {
-      try {
-        await api.deleteMessage(chatId, messageId)
-        await loadMessages(chatId)
-      } catch (error) {
-        console.error('Ошибка удаления сообщения:', error)
+    async function deleteMessage(chatId, messageId) {
+      if (!confirm("Вы уверены, что хотите удалить это сообщение?")) return;
+
+      const token = localStorage.getItem("token");
+      const res = await fetch(`https://messengertester.somee.com/message/${chatId}/messages/${messageId}/Delete`, {
+        method: 'DELETE',
+        headers: { 'Authorization': 'Bearer ' + token }
+      });
+
+      if (!res.ok) {
+        alert("Ошибка удаления сообщения");
       }
     }
 
-    const currentMessages = computed(() => {
-      return currentChat.value
-          ? messages.value[currentChat.value.id] || []
-          : []
-    })
-
+    // Инициализация
     onMounted(() => {
-      loadChats()
-    })
+      connectSignalR();
+      if (currentUserId.value) {
+        loadChats(currentUserId.value);
+      }
+    });
 
     return {
-      authStore,
+      currentUserId,
+      currentChatId,
       userChats,
-      currentChat,
+      messages,
       messageContent,
-      currentMessages,
       messagesContainer,
-      openChat,
+      selectChat,
       sendMessage,
       editMessage,
       deleteMessage
@@ -169,6 +239,7 @@ export default {
 </script>
 
 <style scoped>
+/* Стили остаются без изменений */
 .chat-app {
   display: flex;
   height: 100vh;
@@ -208,7 +279,6 @@ export default {
   display: flex;
   flex-direction: column;
   gap: 10px;
-
 }
 
 .message-input {
