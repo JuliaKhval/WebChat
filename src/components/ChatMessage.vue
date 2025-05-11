@@ -2,8 +2,7 @@
   <div
       :class="['message', { 'own-message': isOwnMessage }]"
       @contextmenu.prevent="showContextMenu($event)"
-      :data-message-id="message.id"
-      :data-user-id="message.userId"
+      ref="messageElement"
   >
     <div class="message-header">
       <strong>{{ message.sender }}</strong>
@@ -12,11 +11,19 @@
     <div class="message-content">
       {{ message.content }}
     </div>
+
+    <div v-if="contextMenuVisible"
+         class="context-menu"
+         :style="{ top: contextMenuY + 'px', left: contextMenuX + 'px' }"
+         @click.stop>
+      <button v-if="isOwnMessage" @click="editMessage">Edit</button>
+      <button v-if="isOwnMessage" @click="deleteMessage">Delete</button>
+    </div>
   </div>
 </template>
 
 <script>
-import { computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 
 export default {
   props: {
@@ -27,31 +34,82 @@ export default {
     currentUserId: {
       type: [String, Number],
       required: true
+    },
+    connection: {
+      type: Object,
+      required: true
     }
   },
   setup(props, { emit }) {
-    const isOwnMessage = computed(() => props.message.userId === props.currentUserId)
+    const isOwnMessage = computed(() => props.message.senderId === props.currentUserId)
+    const contextMenuVisible = ref(false)
+    const contextMenuX = ref(0)
+    const contextMenuY = ref(0)
+    const messageElement = ref(null)
 
     const formatDate = (dateString) => {
       return new Date(dateString).toLocaleTimeString([], {
         hour: '2-digit',
-        minute: '2-digit'
+        minute: '2-digit',
+        day: '2-digit',
+        month: '2-digit'
       })
     }
 
     const showContextMenu = (event) => {
-      event.preventDefault()
-      emit('show-context-menu', {
-        x: event.clientX,
-        y: event.clientY,
-        message: props.message
-      })
+      if (!isOwnMessage.value) return
+
+      contextMenuX.value = event.clientX
+      contextMenuY.value = event.clientY
+      contextMenuVisible.value = true
     }
+
+    const hideContextMenu = () => {
+      contextMenuVisible.value = false
+    }
+
+    const editMessage = () => {
+      const newText = prompt('Edit message:', props.message.content)
+      if (newText && newText.trim() !== '' && newText !== props.message.content) {
+        props.connection.invoke('EditMessage', props.message.chatId, props.message.id, newText)
+            .catch(err => console.error('Error editing message:', err))
+      }
+      hideContextMenu()
+    }
+
+    const deleteMessage = () => {
+      if (confirm('Are you sure you want to delete this message?')) {
+        props.connection.invoke('DeleteMessage', props.message.chatId, props.message.id)
+            .catch(err => console.error('Error deleting message:', err))
+      }
+      hideContextMenu()
+    }
+
+    // Close context menu when clicking outside
+    const handleClickOutside = (event) => {
+      if (messageElement.value && !messageElement.value.contains(event.target)) {
+        hideContextMenu()
+      }
+    }
+
+    onMounted(() => {
+      document.addEventListener('click', handleClickOutside)
+    })
+
+    onUnmounted(() => {
+      document.removeEventListener('click', handleClickOutside)
+    })
 
     return {
       isOwnMessage,
       formatDate,
-      showContextMenu
+      contextMenuVisible,
+      contextMenuX,
+      contextMenuY,
+      messageElement,
+      showContextMenu,
+      editMessage,
+      deleteMessage
     }
   }
 }
@@ -66,12 +124,13 @@ export default {
   max-width: 70%;
   align-self: flex-start;
   position: relative;
-  cursor: pointer;
 }
+
 .message.own-message {
   align-self: flex-end;
   background: #e3f2fd;
 }
+
 .message-header {
   display: flex;
   justify-content: space-between;
@@ -79,7 +138,31 @@ export default {
   font-size: 0.8em;
   color: #666;
 }
+
 .message-content {
   word-wrap: break-word;
+}
+
+.context-menu {
+  position: fixed;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+  z-index: 1000;
+}
+
+.context-menu button {
+  display: block;
+  width: 100%;
+  padding: 8px 16px;
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.context-menu button:hover {
+  background-color: #f5f5f5;
 }
 </style>

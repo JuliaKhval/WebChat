@@ -9,43 +9,42 @@
     <div class="chat-window">
       <div v-if="currentChat" class="active-chat">
         <div class="chat-header">
-          Чат с {{ currentChat.receiverUsername }}
+          Chat with {{ currentChat.receiverUsername }}
         </div>
 
-        <div class="messages">
+        <div class="messages" ref="messagesContainer">
           <Message
               v-for="message in currentMessages"
               :key="message.id"
               :message="message"
               :current-user-id="authStore.currentUser.id"
-              @show-context-menu="showContextMenu"
+              :connection="connection"
+              @message-edited="handleMessageEdited"
+              @message-deleted="handleMessageDeleted"
           />
         </div>
 
         <div class="message-input">
           <input
               v-model="messageContent"
-              placeholder="Введите сообщение..."
+              placeholder="Type a message..."
               @keyup.enter="sendMessage"
           >
           <button @click="sendMessage">
-            Отправить
+            Send
           </button>
         </div>
       </div>
 
       <div v-else class="no-chat">
-        <p>Выберите чат для начала общения</p>
+        <p>Select a chat to start messaging</p>
       </div>
     </div>
   </div>
-  <div v-if="contextMenu.show" class="context-menu" :style="{ top: contextMenu.y + 'px', left: contextMenu.x + 'px' }">
-    <div @click="handleEditMessage">Изменить</div>
-    <div @click="handleDeleteMessage">Удалить</div>
-  </div>
 </template>
+
 <script>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useAuthStore } from '../stores/auth'
 import api from '../api'
 import Message from '../components/ChatMessage.vue'
@@ -60,78 +59,64 @@ export default {
     const currentChat = ref(null)
     const messageContent = ref('')
     const messages = ref({})
+    const connection = ref(null)
     const messagesContainer = ref(null)
 
-    // Контекстное меню
-    const contextMenu = ref({
-      show: false,
-      x: 0,
-      y: 0,
-      message: null
-    })
+    // Initialize SignalR connection
+    const initSignalR = async () => {
+      const token = localStorage.getItem("token")
 
-    const currentMessages = computed(() => {
-      return currentChat.value
-          ? messages.value[currentChat.value.id] || []
-          : []
-    })
-
-    // Подключение к SignalR
-    let connection = null;
-
-    const connectSignalR = async () => {
-      const token = sessionStorage.getItem("token");
-
-      connection = new signalR.HubConnectionBuilder()
+      connection.value = new signalR.HubConnectionBuilder()
           .withUrl("https://messengertester.somee.com/chatHub", {
             accessTokenFactory: () => token
           })
-          .build();
+          .withAutomaticReconnect()
+          .build()
 
-      connection.on("ReceiveMessage", (chatId, userId, message) => {
-        if (chatId === currentChat.value?.id) {
-          addMessageToDOM(chatId, userId, message)
+      // Setup SignalR handlers
+      connection.value.on("ReceiveMessage", (chatId, message) => {
+        if (messages.value[chatId]) {
+          messages.value[chatId].push(message)
+          scrollToBottom()
         }
-      });
+      })
 
-      connection.on("MessageEdited", (chatId, messageId, newText) => {
-        const msgEl = document.querySelector(`[data-message-id="${messageId}"]`);
-        if (msgEl) {
-          msgEl.innerHTML = `[${msgEl.dataset.userId}]: ${newText}`;
+      connection.value.on("MessageEdited", (chatId, messageId, newText) => {
+        if (messages.value[chatId]) {
+          const messageIndex = messages.value[chatId].findIndex(m => m.id === messageId)
+          if (messageIndex !== -1) {
+            messages.value[chatId][messageIndex].content = newText
+          }
         }
-      });
+      })
 
-      connection.on("MessageDeleted", (chatId, messageId) => {
-        const msgEl = document.querySelector(`[data-message-id="${messageId}"]`);
-        if (msgEl) {
-          msgEl.remove();
+      connection.value.on("MessageDeleted", (chatId, messageId) => {
+        if (messages.value[chatId]) {
+          messages.value[chatId] = messages.value[chatId].filter(m => m.id !== messageId)
         }
-      });
+      })
 
       try {
-        await connection.start()
-        console.log("SignalR подключён")
+        await connection.value.start()
+        console.log("SignalR Connected")
       } catch (err) {
-        console.error("Ошибка подключения к SignalR:", err);
+        console.error("SignalR Connection Error:", err)
       }
-    }
-
-    const addMessageToDOM = (chatId, userId, message, messageId = null) => {
-      const messagesEl = document.getElementById("messages");
-      const wrapper = document.createElement("li");
-      wrapper.dataset.messageId = messageId || "";
-      wrapper.dataset.userId = userId;
-      wrapper.innerText = `[${userId}]: ${message}`;
-
-      messagesEl.appendChild(wrapper);
     }
 
     const loadChats = async () => {
       try {
         const response = await api.getUserChats(authStore.currentUser.id)
         userChats.value = response.data
+
+        // Connect to SignalR after loading chats
+        await initSignalR()
+
+        if (userChats.value.length > 0) {
+          await openChat(userChats.value[0])
+        }
       } catch (error) {
-        console.error('Ошибка загрузки чатов:', error)
+        console.error('Error loading chats:', error)
       }
     }
 
@@ -141,10 +126,13 @@ export default {
         await loadMessages(chat.id)
       }
 
-      try {
-        await connection.invoke("JoinChat", chat.id.toString(), authStore.currentUser.id.toString())
-      } catch (err) {
-        console.error("Не удалось присоединиться к группе чата:", err)
+      // Join the SignalR group for this chat
+      if (connection.value) {
+        try {
+          await connection.value.invoke("JoinChat", chat.id.toString(), authStore.currentUser.id.toString())
+        } catch (err) {
+          console.error("Error joining chat:", err)
+        }
       }
     }
 
@@ -155,8 +143,9 @@ export default {
           ...messages.value,
           [chatId]: response.data
         }
+        scrollToBottom()
       } catch (error) {
-        console.error('Ошибка загрузки сообщений:', error)
+        console.error('Error loading messages:', error)
       }
     }
 
@@ -164,52 +153,68 @@ export default {
       if (!messageContent.value.trim() || !currentChat.value) return
 
       try {
-        await api.sendMessage(
-            currentChat.value.id,
-            authStore.currentUser.id,
-            messageContent.value
-        )
-        await loadMessages(currentChat.value.id)
-        messageContent.value = ''
-      } catch (error) {
-        console.error('Ошибка отправки сообщения:', error)
-      }
-    }
-
-    const showContextMenu = (payload) => {
-      contextMenu.value = {
-        show: true,
-        x: payload.x,
-        y: payload.y,
-        message: payload.message
-      }
-    }
-
-    const handleEditMessage = () => {
-      if (contextMenu.value.message) {
-        const newText = prompt('Редактировать сообщение:', contextMenu.value.message.content)
-        if (newText && newText.trim()) {
-          api.editMessage(contextMenu.value.message.chatId, contextMenu.value.message.id, newText)
-              .then(() => loadMessages(contextMenu.value.message.chatId))
-              .catch(err => console.error('Ошибка редактирования:', err))
+        // Send via SignalR
+        if (connection.value) {
+          await connection.value.invoke(
+              "SendMessage",
+              currentChat.value.id,
+              authStore.currentUser.id,
+              messageContent.value
+          )
+          messageContent.value = ''
+          scrollToBottom()
+        } else {
+          console.error("SignalR connection not established")
         }
-        contextMenu.value.show = false
+      } catch (error) {
+        console.error('Error sending message:', error)
       }
     }
 
-    const handleDeleteMessage = () => {
-      if (contextMenu.value.message && confirm('Вы уверены?')) {
-        api.deleteMessage(contextMenu.value.message.chatId, contextMenu.value.message.id)
-            .then(() => loadMessages(contextMenu.value.message.chatId))
-            .catch(err => console.error('Ошибка удаления:', err))
-        contextMenu.value.show = false
+    const handleMessageEdited = ({ chatId, messageId, newText }) => {
+      if (messages.value[chatId]) {
+        const messageIndex = messages.value[chatId].findIndex(m => m.id === messageId)
+        if (messageIndex !== -1) {
+          messages.value[chatId][messageIndex].content = newText
+        }
       }
     }
+
+    const handleMessageDeleted = ({ chatId, messageId }) => {
+      if (messages.value[chatId]) {
+        messages.value[chatId] = messages.value[chatId].filter(m => m.id !== messageId)
+      }
+    }
+
+    const scrollToBottom = () => {
+      if (messagesContainer.value) {
+        // Use nextTick to wait for DOM update
+        setTimeout(() => {
+          messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
+        }, 0)
+      }
+    }
+
+    const currentMessages = computed(() => {
+      return currentChat.value
+          ? messages.value[currentChat.value.id] || []
+          : []
+    })
 
     onMounted(() => {
       loadChats()
-      connectSignalR()
     })
+
+    onUnmounted(() => {
+      if (connection.value) {
+        connection.value.stop()
+      }
+    })
+
+    // Watch for current chat changes to scroll to bottom
+    watch(currentMessages, () => {
+      scrollToBottom()
+    }, { deep: true })
 
     return {
       authStore,
@@ -217,17 +222,16 @@ export default {
       currentChat,
       messageContent,
       currentMessages,
+      messagesContainer,
+      connection,
       openChat,
       sendMessage,
-      showContextMenu,
-      handleEditMessage,
-      handleDeleteMessage,
-      contextMenu
+      handleMessageEdited,
+      handleMessageDeleted
     }
   }
 }
 </script>
-
 
 <style scoped>
 .chat-app {
