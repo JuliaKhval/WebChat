@@ -136,10 +136,9 @@ export default {
 }
 .message-footer {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 0.9em;
-  margin-bottom: 5px;
+  justify-content: flex-end;
+  font-size: 0.5em;
+  margin-bottom: 3px;
 }
 .context-menu {
   position: absolute;
