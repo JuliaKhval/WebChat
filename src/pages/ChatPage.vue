@@ -47,14 +47,6 @@ import { useAuthStore } from '../stores/auth'
 import api from '../api'
 import Message from '../components/ChatMessage.vue'
 import UserList from '../components/UserList.vue'
-import {
-  initSignalRConnection,
-  onReceiveMessage,
-  onMessageEdited,
-  onMessageDeleted,
-  joinChat,
-  safeInvoke
-} from '../api/signalr'
 
 export default {
   components: { Message, UserList },
@@ -80,9 +72,6 @@ export default {
       if (!messages.value[chat.id]) {
         await loadMessages(chat.id)
       }
-
-      // Присоединяемся к группе чата
-      joinChat(chat.id, authStore.currentUser.id)
     }
 
     const loadMessages = async (chatId) => {
@@ -93,34 +82,38 @@ export default {
           [chatId]: response.data
         }
 
-        nextTick(scrollToBottom)
+        nextTick(() => {
+          messagesContainer.value?.scrollTo({
+            top: messagesContainer.value.scrollHeight,
+            behavior: "smooth"
+          })
+        })
       } catch (error) {
         console.error('Ошибка загрузки сообщений:', error)
       }
     }
 
     const sendMessage = async () => {
-      const chatId = currentChat.value?.id
-      const content = messageContent.value.trim()
-
-      if (!content || !chatId) return
+      if (!messageContent.value.trim() || !currentChat.value) return
 
       try {
-        const res = await api.sendMessage(chatId, authStore.currentUser.id, content)
+        await api.sendMessage(
+            currentChat.value.id,
+            authStore.currentUser.id,
+            messageContent.value
+        )
 
-        if (res.status === 200) {
-          messageContent.value = ''
+        await loadMessages(currentChat.value.id)
+        messageContent.value = ''
 
-          // Локально добавляем
-          messages.value[chatId] = [...(messages.value[chatId] || []), res.data]
-          nextTick(scrollToBottom)
-
-          // Отправляем всем участникам через SignalR
-          await safeInvoke('SendMessage', chatId, res.data)
-        }
+        nextTick(() => {
+          messagesContainer.value?.scrollTo({
+            top: messagesContainer.value.scrollHeight,
+            behavior: "smooth"
+          })
+        })
       } catch (error) {
-        console.error('Ошибка отправки:', error)
-        alert('Не удалось отправить сообщение')
+        console.error('Ошибка отправки сообщения:', error)
       }
     }
 
@@ -128,9 +121,8 @@ export default {
       try {
         await api.editMessage(chatId, messageId, { content: newText })
         await loadMessages(chatId)
-        await safeInvoke('EditMessage', chatId, messageId, newText)
       } catch (error) {
-        console.error('Ошибка редактирования:', error)
+        console.error('Ошибка редактирования сообщения:', error)
       }
     }
 
@@ -138,45 +130,19 @@ export default {
       try {
         await api.deleteMessage(chatId, messageId)
         await loadMessages(chatId)
-        await safeInvoke('DeleteMessage', chatId, messageId)
       } catch (error) {
-        console.error('Ошибка удаления:', error)
+        console.error('Ошибка удаления сообщения:', error)
       }
     }
 
     const currentMessages = computed(() => {
-      return currentChat.value ? messages.value[currentChat.value.id] || [] : []
+      return currentChat.value
+          ? messages.value[currentChat.value.id] || []
+          : []
     })
 
-    const scrollToBottom = () => {
-      if (messagesContainer.value) {
-        messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
-      }
-    }
-
-    // Подписываемся на события SignalR
-    onMounted(async () => {
+    onMounted(() => {
       loadChats()
-
-      initSignalRConnection()
-
-      onReceiveMessage((chatId, message) => {
-        if (currentChat.value?.id == chatId) {
-          messages.value[chatId] = [...(messages.value[chatId] || []), message]
-          nextTick(scrollToBottom)
-        }
-      })
-
-      onMessageEdited((chatId, messageId, newText) => {
-        const index = messages.value[chatId]?.findIndex(m => m.id === messageId)
-        if (index > -1) {
-          messages.value[chatId][index].content = newText
-        }
-      })
-
-      onMessageDeleted((chatId, messageId) => {
-        messages.value[chatId] = messages.value[chatId]?.filter(m => m.id !== messageId)
-      })
     })
 
     return {
