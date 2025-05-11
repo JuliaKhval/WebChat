@@ -52,9 +52,9 @@ export default {
       if (!props.message.sender || !authStore.currentUser) return false
 
       const senderId = String(props.message.sender)
-      const currentUserId = String(authStore.currentUser.id)
+      const currentUser = String(authStore.currentUser)
 
-      return senderId === currentUserId
+      return senderId === currentUser
     })
 
     // --- Контекстное меню ---
