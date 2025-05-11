@@ -18,6 +18,7 @@
               :key="message.id"
               :message="message"
               :current-user-id="authStore.currentUser.id"
+              @show-context-menu="showContextMenu"
           />
         </div>
 

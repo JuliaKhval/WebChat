@@ -3,6 +3,7 @@
       :class="['message', { 'own-message': isOwnMessage }]"
       @contextmenu.prevent="showContextMenu($event)"
       :data-message-id="message.id"
+      :data-user-id="message.userId"
   >
     <div class="message-header">
       <strong>{{ message.sender }}</strong>
