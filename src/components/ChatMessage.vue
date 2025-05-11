@@ -44,27 +44,25 @@ export default {
     }
   },
   setup(props) {
-    const authStore = useAuthStore() // ✅ Теперь внутри setup()
+    const authStore = useAuthStore()
     const showContextMenu = ref(false)
 
-    // --- 1. Проверка: своё ли сообщение ---
+    // --- Определяем, своё ли сообщение ---
     const isOwnMessage = computed(() => {
-      if (!props.message.sender || !authStore.currentUser) {
-        return false
-      }
+      if (!props.message.sender || !authStore.currentUser?.id) return false
 
-      const sender = String(props.message.sender).trim().toLowerCase()
-      const current = String(authStore.currentUser.username || authStore.currentUser).trim().toLowerCase()
+      const senderId = String(props.message.sender)
+      const currentUserId = String(authStore.currentUser.id)
 
-      return sender === current
+      return senderId === currentUserId
     })
 
-    // --- 2. Меню ---
+    // --- Контекстное меню ---
     const toggleMenu = () => {
       showContextMenu.value = !showContextMenu.value
     }
 
-    // --- 3. Редактирование ---
+    // --- Редактирование ---
     const editMessage = () => {
       const newText = prompt('Измените сообщение:', props.message.content)
       if (newText && newText.trim() !== props.message.content) {
@@ -72,27 +70,26 @@ export default {
       }
     }
 
-    // --- 4. Удаление ---
+    // --- Удаление ---
     const deleteMessage = () => {
       if (confirm('Вы уверены, что хотите удалить это сообщение?')) {
         props.onDelete()
       }
     }
 
-    // --- 5. Формат даты ---
+    // --- Формат даты ---
     const formatDate = (dateString) => {
       if (!dateString) return ''
-      return new Date(dateString).toLocaleTimeString([], {
+      const date = new Date(dateString)
+      return date.toLocaleTimeString([], {
         hour: '2-digit',
-        minute: '2-digit',
-        day: '2-digit',
-        month: '2-digit'
-      })
+        minute: '2-digit'
+      }) + ' ' + date.toLocaleDateString()
     }
 
     // --- Отладка ---
     console.log('message.sender:', props.message.sender)
-    console.log('authStore currentUser:', authStore.currentUser)
+    console.log('authStore currentUser.id:', authStore.currentUser?.id)
     console.log('isOwnMessage:', isOwnMessage.value)
 
     // --- Возвращаем всё в шаблон ---
@@ -102,7 +99,7 @@ export default {
       toggleMenu,
       editMessage,
       deleteMessage,
-      formatDate // ✅ Обязательно добавляем сюда!
+      formatDate // ✅ Обязательно!
     }
   }
 }
