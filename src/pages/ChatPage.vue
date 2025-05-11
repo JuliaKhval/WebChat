@@ -1,27 +1,40 @@
 <template>
   <div class="chat-app">
-    <UserList
-        :chats="userChats"
-        :selected-chat="currentChat"
-        @select-chat="openChat"
-    />
+    <div class="chat-list">
+      <h3>Ваши чаты</h3>
+      <ul>
+        <li
+            v-for="chat in userChats"
+            :key="chat.id"
+            :class="{ active: currentChatId === chat.id }"
+            @click="selectChat(chat.id)"
+        >
+          Чат с {{ chat.receiverUsername }}
+        </li>
+      </ul>
+    </div>
 
     <div class="chat-window">
-      <div v-if="currentChat" class="active-chat">
+      <div v-if="currentChatId" class="active-chat">
         <div class="chat-header">
-          Чат с {{ currentChat.receiverUsername }}
+          Чат ID: {{ currentChatId }}
         </div>
 
         <div class="messages" ref="messagesContainer">
-          <Message
-              v-for="message in currentMessages"
+          <div
+              v-for="message in messages"
               :key="message.id"
-              :message="message"
-              :current-user-id="authStore.currentUser.id"
-              :connection="connection"
-              @message-edited="handleMessageEdited"
-              @message-deleted="handleMessageDeleted"
-          />
+              :class="['message', { 'own-message': message.senderId === currentUserId }]"
+              @contextmenu.prevent="showContextMenu($event, message)"
+          >
+            <div class="message-header">
+              <strong>{{ message.senderUsername }}</strong>
+              <span>{{ formatDate(message.createdDataTime) }}</span>
+            </div>
+            <div class="message-content">
+              {{ message.content }}
+            </div>
+          </div>
         </div>
 
         <div class="message-input">
@@ -40,193 +53,207 @@
         <p>Выберите чат для начала общения</p>
       </div>
     </div>
+
+    <!-- Контекстное меню -->
+    <div
+        v-if="contextMenu.visible"
+        class="context-menu"
+        :style="{ top: contextMenu.y + 'px', left: contextMenu.x + 'px' }"
+        @click.stop
+    >
+      <button @click="editSelectedMessage">Изменить</button>
+      <button @click="deleteSelectedMessage">Удалить</button>
+    </div>
   </div>
 </template>
 
 <script>
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
-import { useAuthStore } from '../stores/auth'
+import { ref, onMounted, onUnmounted } from 'vue'
 import api from '../api'
-import Message from '../components/ChatMessage.vue'
-import UserList from '../components/UserList.vue'
-import { HubConnectionBuilder, LogLevel } from '@microsoft/signalr'
+import * as signalR from '@microsoft/signalr'
 
 export default {
-  components: { Message, UserList },
   setup() {
-    const authStore = useAuthStore()
+    const currentUserId = ref(null)
+    const currentChatId = ref(null)
     const userChats = ref([])
-    const currentChat = ref(null)
+    const messages = ref([])
     const messageContent = ref('')
-    const messages = ref({})
     const connection = ref(null)
     const messagesContainer = ref(null)
 
+    const contextMenu = ref({
+      visible: false,
+      x: 0,
+      y: 0,
+      message: null
+    })
+
+    // Форматирование даты
+    const formatDate = (dateString) => {
+      const date = new Date(dateString)
+      return date.toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+        day: '2-digit',
+        month: '2-digit'
+      })
+    }
+
+    // Инициализация SignalR
     const initSignalR = async () => {
-      try {
-        const token = localStorage.getItem("token")
+      const token = sessionStorage.getItem('token')
 
-        connection.value = new HubConnectionBuilder()
-            .withUrl("https://messengertester.somee.com/chatHub", {
-              accessTokenFactory: () => token
-            })
-            .configureLogging(LogLevel.Information)
-            .withAutomaticReconnect()
-            .build()
+      connection.value = new signalR.HubConnectionBuilder()
+          .withUrl("https://messengertester.somee.com/chatHub", {
+            accessTokenFactory: () => token
+          })
+          .withAutomaticReconnect()
+          .build()
 
-        // Обработчики SignalR
-        connection.value.on("ReceiveMessage", (message) => {
-          addMessageToChat(message.chatId, message)
+      // Обработчики SignalR
+      connection.value.on("ReceiveMessage", (chatId, userId, content) => {
+        if (chatId === currentChatId.value) {
+          messages.value.push({
+            id: Date.now(), // временный ID, бэкенд должен присвоить реальный
+            chatId,
+            senderId: userId,
+            content,
+            createdDataTime: new Date().toISOString()
+          })
           scrollToBottom()
-        })
+        }
+      })
 
-        connection.value.on("MessageEdited", (chatId, messageId, newContent) => {
-          updateMessageContent(chatId, messageId, newContent)
-        })
+      connection.value.on("MessageEdited", (chatId, messageId, newText) => {
+        if (chatId === currentChatId.value) {
+          const message = messages.value.find(m => m.id === messageId)
+          if (message) {
+            message.content = newText
+          }
+        }
+      })
 
-        connection.value.on("MessageDeleted", (chatId, messageId) => {
-          removeMessage(chatId, messageId)
-        })
+      connection.value.on("MessageDeleted", (chatId, messageId) => {
+        if (chatId === currentChatId.value) {
+          messages.value = messages.value.filter(m => m.id !== messageId)
+        }
+      })
 
+      try {
         await connection.value.start()
-        console.log("SignalR подключен")
+        console.log("SignalR подключён")
       } catch (err) {
         console.error("Ошибка подключения SignalR:", err)
-        setTimeout(initSignalR, 5000) // Переподключение через 5 секунд
+        setTimeout(initSignalR, 5000)
       }
     }
 
-    const addMessageToChat = (chatId, message) => {
-      if (!messages.value[chatId]) {
-        messages.value[chatId] = []
-      }
-      if (!messages.value[chatId].some(m => m.id === message.id)) {
-        messages.value[chatId].push(message)
-      }
-    }
-
-    const updateMessageContent = (chatId, messageId, newContent) => {
-      if (messages.value[chatId]) {
-        const message = messages.value[chatId].find(m => m.id === messageId)
-        if (message) {
-          message.content = newContent
-        }
-      }
-    }
-
-    const removeMessage = (chatId, messageId) => {
-      if (messages.value[chatId]) {
-        messages.value[chatId] = messages.value[chatId].filter(m => m.id !== messageId)
-      }
-    }
-
+    // Загрузка чатов пользователя
     const loadChats = async () => {
       try {
-        const response = await api.getUserChats(authStore.currentUser.id)
+        const response = await api.getUserChats(currentUserId.value)
         userChats.value = response.data
-        await initSignalR()
 
         if (userChats.value.length > 0) {
-          await openChat(userChats.value[0])
+          selectChat(userChats.value[0].id)
         }
       } catch (error) {
         console.error('Ошибка загрузки чатов:', error)
       }
     }
 
-    const openChat = async (chat) => {
-      currentChat.value = chat
-      if (!messages.value[chat.id]) {
-        await loadMessages(chat.id)
-      }
+    // Выбор чата
+    const selectChat = async (chatId) => {
+      currentChatId.value = chatId
+      await loadMessages(chatId)
 
       if (connection.value) {
         try {
-          await connection.value.invoke("JoinChat", chat.id.toString())
+          await connection.value.invoke("JoinChat", chatId.toString(), currentUserId.value.toString())
         } catch (err) {
           console.error("Ошибка входа в чат:", err)
         }
       }
     }
 
+    // Загрузка сообщений
     const loadMessages = async (chatId) => {
       try {
         const response = await api.getChatMessages(chatId)
-        messages.value = {
-          ...messages.value,
-          [chatId]: response.data
-        }
+        messages.value = response.data
         scrollToBottom()
       } catch (error) {
         console.error('Ошибка загрузки сообщений:', error)
       }
     }
 
+    // Отправка сообщения
     const sendMessage = async () => {
-      if (!messageContent.value.trim() || !currentChat.value || !connection.value) return
+      if (!messageContent.value.trim() || !currentChatId.value) return
 
       try {
-        await connection.value.invoke("SendMessage", {
-          ChatId: currentChat.value.id,
-          SenderId: authStore.currentUser.id,
-          Content: messageContent.value
-        })
+        // Отправка через SignalR
+        if (connection.value) {
+          await connection.value.invoke("SendMessage", currentChatId.value, currentUserId.value, messageContent.value)
+        } else {
+          // Fallback через API
+          await api.sendMessage(currentChatId.value, currentUserId.value, messageContent.value)
+        }
+
         messageContent.value = ''
       } catch (error) {
         console.error('Ошибка отправки сообщения:', error)
-        // Fallback to API if SignalR fails
+      }
+    }
+
+    // Контекстное меню
+    const showContextMenu = (event, message) => {
+      if (message.senderId !== currentUserId.value) return
+
+      contextMenu.value = {
+        visible: true,
+        x: event.clientX,
+        y: event.clientY,
+        message
+      }
+    }
+
+    const hideContextMenu = () => {
+      contextMenu.value.visible = false
+    }
+
+    const editSelectedMessage = async () => {
+      const newText = prompt('Изменить сообщение:', contextMenu.value.message.content)
+      if (newText && newText.trim() && newText !== contextMenu.value.message.content) {
         try {
-          await api.sendMessage(
-              currentChat.value.id,
-              authStore.currentUser.id,
-              messageContent.value
+          await api.editMessage(
+              currentChatId.value,
+              contextMenu.value.message.id,
+              newText
           )
-          messageContent.value = ''
-        } catch (apiError) {
-          console.error('Ошибка API при отправке:', apiError)
+        } catch (error) {
+          console.error('Ошибка редактирования:', error)
         }
       }
+      hideContextMenu()
     }
 
-    const handleMessageEdited = async ({ messageId, newText }) => {
-      if (!currentChat.value || !connection.value) return
-
-      try {
-        await connection.value.invoke("EditMessage", {
-          ChatId: currentChat.value.id,
-          MessageId: messageId,
-          NewContent: newText
-        })
-      } catch (error) {
-        console.error('Ошибка редактирования:', error)
-        // Fallback to API
+    const deleteSelectedMessage = async () => {
+      if (confirm('Вы уверены, что хотите удалить это сообщение?')) {
         try {
-          await api.editMessage(currentChat.value.id, messageId, newText)
-        } catch (apiError) {
-          console.error('Ошибка API при редактировании:', apiError)
+          await api.deleteMessage(
+              currentChatId.value,
+              contextMenu.value.message.id
+          )
+        } catch (error) {
+          console.error('Ошибка удаления:', error)
         }
       }
+      hideContextMenu()
     }
 
-    const handleMessageDeleted = async (messageId) => {
-      if (!currentChat.value || !connection.value) return
-
-      try {
-        await connection.value.invoke("DeleteMessage", {
-          ChatId: currentChat.value.id,
-          MessageId: messageId
-        })
-      } catch (error) {
-        console.error('Ошибка удаления:', error)
-        // Fallback to API
-        try {
-          await api.deleteMessage(currentChat.value.id, messageId)
-        } catch (apiError) {
-          console.error('Ошибка API при удалении:', apiError)
-        }
-      }
-    }
-
+    // Прокрутка вниз
     const scrollToBottom = () => {
       setTimeout(() => {
         if (messagesContainer.value) {
@@ -235,42 +262,82 @@ export default {
       }, 100)
     }
 
-    const currentMessages = computed(() => {
-      return currentChat.value ? messages.value[currentChat.value.id] || [] : []
-    })
+    // Закрытие контекстного меню при клике вне его
+    const handleClickOutside = (event) => {
+      if (!event.target.closest('.context-menu')) {
+        hideContextMenu()
+      }
+    }
 
-    onMounted(() => {
-      loadChats()
+    // Инициализация
+    onMounted(async () => {
+      const authData = sessionStorage.getItem('auth')
+      if (authData) {
+        const parsed = JSON.parse(authData)
+        currentUserId.value = parsed.id
+        await initSignalR()
+        await loadChats()
+      }
+
+      document.addEventListener('click', handleClickOutside)
     })
 
     onUnmounted(() => {
       if (connection.value) {
         connection.value.stop()
       }
+      document.removeEventListener('click', handleClickOutside)
     })
 
-    watch(currentMessages, scrollToBottom, { deep: true })
-
     return {
-      authStore,
+      currentUserId,
+      currentChatId,
       userChats,
-      currentChat,
+      messages,
       messageContent,
-      currentMessages,
       messagesContainer,
-      connection,
-      openChat,
+      contextMenu,
+      formatDate,
+      selectChat,
       sendMessage,
-      handleMessageEdited,
-      handleMessageDeleted
+      showContextMenu,
+      editSelectedMessage,
+      deleteSelectedMessage
     }
   }
 }
 </script>
+
 <style scoped>
 .chat-app {
   display: flex;
-  height: calc(100vh - 60px);
+  height: 100vh;
+}
+
+.chat-list {
+  width: 250px;
+  border-right: 1px solid #ddd;
+  padding: 10px;
+  overflow-y: auto;
+}
+
+.chat-list ul {
+  list-style: none;
+  padding: 0;
+}
+
+.chat-list li {
+  padding: 8px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.chat-list li:hover {
+  background-color: #f0f0f0;
+}
+
+.chat-list li.active {
+  background-color: #e3f2fd;
 }
 
 .chat-window {
@@ -297,7 +364,6 @@ export default {
   padding: 15px;
   border-bottom: 1px solid #e0e0e0;
   font-weight: bold;
-  text-align: center;
 }
 
 .messages {
@@ -307,6 +373,32 @@ export default {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.message {
+  margin: 5px 0;
+  padding: 10px;
+  border-radius: 5px;
+  background: #f1f1f1;
+  max-width: 70%;
+  align-self: flex-start;
+}
+
+.message.own-message {
+  align-self: flex-end;
+  background: #e3f2fd;
+}
+
+.message-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 5px;
+  font-size: 0.8em;
+  color: #666;
+}
+
+.message-content {
+  word-wrap: break-word;
 }
 
 .message-input {
@@ -330,5 +422,28 @@ export default {
   border: none;
   border-radius: 4px;
   cursor: pointer;
+}
+
+.context-menu {
+  position: fixed;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+  z-index: 1000;
+}
+
+.context-menu button {
+  display: block;
+  width: 100%;
+  padding: 8px 16px;
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.context-menu button:hover {
+  background-color: #f5f5f5;
 }
 </style>
