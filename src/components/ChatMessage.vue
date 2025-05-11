@@ -49,10 +49,9 @@ export default {
 
     // --- Определяем, своё ли сообщение ---
     const isOwnMessage = computed(() => {
-      if (!props.message.sender || !authStore.currentUser) return false
 
       const senderId = String(props.message.sender)
-      const currentUser = String(authStore.currentUser)
+      const currentUser = String(authStore.currentUser.username)
 
       return senderId === currentUser
     })
