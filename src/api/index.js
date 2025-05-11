@@ -37,7 +37,11 @@ export default {
         return apiClient.get(`/message/${chatId}/messages`)
     },
     sendMessage(chatId, userId, content) {
-        return apiClient.post(`/message/${chatId}/messages/${userId}/Add`, { content })
+        return apiClient.post(`/message/${chatId}/messages/${userId}/Add`, `"${content}"`, {
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        })
     },
     editMessage(chatId, messageId, newText) {
         return apiClient.put(`/message/${chatId}/messages/${messageId}`, { text: newText })
