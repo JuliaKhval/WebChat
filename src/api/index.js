@@ -17,7 +17,6 @@ apiClient.interceptors.request.use(config => {
     }
     return config
 })
-
 export default {
     // Auth
     login(username, password) {
@@ -26,16 +25,14 @@ export default {
     register(username, password) {
         return apiClient.post('/user/register', { username, password })
     },
-
-    // Chats
     getUserChats(userId) {
         return apiClient.get(`/chat/${userId}/chats`)
     },
-
-    // Messages
     getChatMessages(chatId) {
         return apiClient.get(`/message/${chatId}/messages`)
     },
+
+    // Отправка сообщения
     sendMessage(chatId, userId, content) {
         return apiClient.post(`/message/${chatId}/messages/${userId}/Add`, `"${content}"`, {
             headers: {
@@ -43,9 +40,17 @@ export default {
             }
         })
     },
+
+    // Редактирование
     editMessage(chatId, messageId, newText) {
-        return apiClient.put(`/message/${chatId}/messages/${messageId}`, { text: newText })
+        return apiClient.put(`/message/${chatId}/messages/${messageId}`, `"${newText}"`, {
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        })
     },
+
+    // Удаление
     deleteMessage(chatId, messageId) {
         return apiClient.delete(`/message/${chatId}/messages/${messageId}`)
     }
