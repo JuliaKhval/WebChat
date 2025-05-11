@@ -131,13 +131,13 @@ export default {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 0.9em;
+  font-size: 0.8em;
   margin-bottom: 5px;
 }
 .message-footer {
   display: flex;
   justify-content: flex-end;
-  font-size: 0.5em;
+  font-size: 0.8em;
   margin-bottom: 3px;
 }
 .context-menu {
