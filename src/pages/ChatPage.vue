@@ -201,7 +201,7 @@ export default {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  max-height: 80vh;
+
 }
 
 .message-input {
