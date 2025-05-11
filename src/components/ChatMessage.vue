@@ -1,5 +1,8 @@
 <template>
-  <div :class="['message', { 'own-message': isOwnMessage }]">
+  <div
+      :class="['message', { 'own-message': isOwnMessage }]"
+      @contextmenu="$emit('contextmenu', $event)"
+  >
     <div class="message-header">
       <strong>{{ message.sender }}</strong>
       <span>{{ formatDate(message.createdDataTime) }}</span>
@@ -24,6 +27,7 @@ export default {
       required: true
     }
   },
+  emits: ['contextmenu'],
   setup(props) {
     const isOwnMessage = computed(() => props.message.sender === props.currentUserId)
 
@@ -52,6 +56,7 @@ export default {
   background: #f1f1f1;
   max-width: 70%;
   align-self: flex-start;
+  cursor: context-menu;
 }
 
 .message.own-message {

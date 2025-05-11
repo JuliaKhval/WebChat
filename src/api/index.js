@@ -1,10 +1,9 @@
 import axios from 'axios'
 
 const apiClient = axios.create({
-    baseURL: 'https://messengertester.somee.com',
+    baseURL: 'http://messenger.somee.com',
     withCredentials: false,
     headers: {
-        Accept: 'application/json',
         'Content-Type': 'application/json'
     }
 })
@@ -12,8 +11,12 @@ const apiClient = axios.create({
 apiClient.interceptors.request.use(config => {
     const authData = sessionStorage.getItem('auth')
     if (authData) {
-        const parsed = JSON.parse(authData)
-        config.headers.Authorization = `Bearer ${parsed.token}`
+        try {
+            const { token } = JSON.parse(authData)
+            config.headers.Authorization = `Bearer ${token}`
+        } catch (e) {
+            console.error('Error parsing auth data:', e)
+        }
     }
     return config
 })
@@ -39,10 +42,16 @@ export default {
     sendMessage(chatId, userId, content) {
         return apiClient.post(`/message/${chatId}/messages/${userId}/Add`, { content })
     },
-    editMessage(chatId, messageId, newText) {
-        return apiClient.put(`/message/${chatId}/messages/${messageId}`, { text: newText })
+    editMessage(chatId, messageId, content) {
+        return apiClient.put(`/message/${chatId}/messages/${messageId}`, { content })
     },
     deleteMessage(chatId, messageId) {
         return apiClient.delete(`/message/${chatId}/messages/${messageId}`)
+    },
+
+    // WebSocket token
+    get token() {
+        const authData = localStorage.getItem('auth')
+        return authData ? JSON.parse(authData).token : null
     }
 }
