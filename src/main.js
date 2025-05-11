@@ -4,9 +4,6 @@ import App from './App.vue'
 import router from './router'
 import axios from 'axios'
 
-import './api/signalr'
-
-createApp(App).mount('#app')
 // Настройка axios
 axios.defaults.baseURL = 'https://messengertester.somee.com'
 

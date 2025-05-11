@@ -20,7 +20,7 @@
               :current-user-id="authStore.currentUser.id"
               @edit="editMessage(currentChat.id, message.id, $event)"
               @delete="deleteMessage(currentChat.id, message.id)"
-           />
+          />
         </div>
 
         <div class="message-input">
@@ -29,7 +29,9 @@
               placeholder="Введите сообщение..."
               @keyup.enter="sendMessage"
           >
-          <button @click="sendMessage">Отправить</button>
+          <button @click="sendMessage">
+            Отправить
+          </button>
         </div>
       </div>
 
@@ -39,21 +41,12 @@
     </div>
   </div>
 </template>
-
 <script>
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { useAuthStore } from '../stores/auth'
 import api from '../api'
 import Message from '../components/ChatMessage.vue'
 import UserList from '../components/UserList.vue'
-import {
-  initSignalRConnection,
-  safeInvoke,
-  onReceiveMessage,
-  onMessageEdited,
-  onMessageDeleted,
-  joinChat
-} from '../api/signalr'
 
 export default {
   components: { Message, UserList },
@@ -65,36 +58,22 @@ export default {
     const messages = ref({})
     const messagesContainer = ref(null)
 
-    const currentUserId = authStore.currentUser?.id
-
-    // --- Загрузка списка чатов ---
     const loadChats = async () => {
       try {
-        const response = await api.getUserChats(currentUserId)
+        const response = await api.getUserChats(authStore.currentUser.id)
         userChats.value = response.data
       } catch (error) {
         console.error('Ошибка загрузки чатов:', error)
       }
     }
 
-    // --- Открытие чата ---
     const openChat = async (chat) => {
       currentChat.value = chat
-
       if (!messages.value[chat.id]) {
         await loadMessages(chat.id)
       }
-
-      // Ждём, пока соединение будет готово
-      const interval = setInterval(async () => {
-        if (connection?.state === signalR.HubConnectionState.Connected) {
-          clearInterval(interval)
-          joinChat(chat.id, authStore.currentUser.id)
-        }
-      }, 500)
     }
 
-    // --- Загрузка сообщений ---
     const loadMessages = async (chatId) => {
       try {
         const response = await api.getChatMessages(chatId)
@@ -103,103 +82,67 @@ export default {
           [chatId]: response.data
         }
 
-        nextTick(scrollToBottom)
+        nextTick(() => {
+          messagesContainer.value?.scrollTo({
+            top: messagesContainer.value.scrollHeight,
+            behavior: "smooth"
+          })
+        })
       } catch (error) {
         console.error('Ошибка загрузки сообщений:', error)
       }
     }
 
-    // --- Отправка сообщения ---
     const sendMessage = async () => {
-      const chatId = currentChat.value?.id
-      const content = messageContent.value.trim()
-
-      if (!content || !chatId) {
-        alert('Выберите чат и введите текст')
-        return
-      }
+      if (!messageContent.value.trim() || !currentChat.value) return
 
       try {
-        const res = await api.sendMessage(chatId, currentUserId, content)
+        await api.sendMessage(
+            currentChat.value.id,
+            authStore.currentUser.id,
+            messageContent.value
+        )
 
-        if (res.status === 200) {
-          const newMessage = res.data
-          messages.value[chatId] = [...(messages.value[chatId] || []), newMessage]
-          messageContent.value = ''
-          nextTick(scrollToBottom)
+        await loadMessages(currentChat.value.id)
+        messageContent.value = ''
 
-          await safeInvoke('SendMessage', chatId, newMessage)
-        }
+        nextTick(() => {
+          messagesContainer.value?.scrollTo({
+            top: messagesContainer.value.scrollHeight,
+            behavior: "smooth"
+          })
+        })
       } catch (error) {
-        console.error('Ошибка отправки:', error)
-        alert('Не удалось отправить сообщение')
+        console.error('Ошибка отправки сообщения:', error)
       }
     }
 
-    // --- Редактирование ---
     const editMessage = async (chatId, messageId, newText) => {
       try {
         await api.editMessage(chatId, messageId, { content: newText })
         await loadMessages(chatId)
-        await safeInvoke('EditMessage', chatId, messageId, newText)
       } catch (error) {
-        console.error('Ошибка редактирования:', error)
+        console.error('Ошибка редактирования сообщения:', error)
       }
     }
 
-    // --- Удаление ---
     const deleteMessage = async (chatId, messageId) => {
-      if (!confirm('Удалить сообщение?')) return
-
       try {
         await api.deleteMessage(chatId, messageId)
         await loadMessages(chatId)
-        await safeInvoke('DeleteMessage', chatId, messageId)
       } catch (error) {
-        console.error('Ошибка удаления:', error)
+        console.error('Ошибка удаления сообщения:', error)
       }
     }
 
-    // --- Реактивные сообщения ---
     const currentMessages = computed(() => {
       return currentChat.value
           ? messages.value[currentChat.value.id] || []
           : []
     })
 
-    // --- Прокрутка вниз ---
-    const scrollToBottom = () => {
-      if (messagesContainer.value) {
-        messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
-      }
-    }
-
-    // --- Подписываемся на события SignalR ---
-    onMounted(async () => {
-      // Инициализируем подключение
-      initSignalRConnection()
-
-      // Подписываемся на события
-      onReceiveMessage((chatId, message) => {
-        if (currentChat.value?.id === chatId) {
-          messages.value[chatId] = [...(messages.value[chatId] || []), message]
-          nextTick(scrollToBottom)
-        }
-      })
-
-      onMessageEdited((chatId, messageId, newText) => {
-        const index = messages.value[chatId]?.findIndex(m => m.id === messageId)
-        if (index > -1) {
-          messages.value[chatId][index].content = newText
-        }
-      })
-
-      onMessageDeleted((chatId, messageId) => {
-        messages.value[chatId] = messages.value[chatId]?.filter(m => m.id !== messageId)
-      })
-
-      // Загружаем список чатов
-      await loadChats()
+    onMounted(() => {
+      loadChats()
     })
 
     return {
@@ -221,7 +164,7 @@ export default {
 <style scoped>
 .chat-app {
   display: flex;
-  height: calc(100vh - 60px);
+  height: 100vh;
 }
 
 .chat-window {
@@ -258,6 +201,7 @@ export default {
   display: flex;
   flex-direction: column;
   gap: 10px;
+
 }
 
 .message-input {
