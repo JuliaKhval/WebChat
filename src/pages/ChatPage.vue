@@ -38,14 +38,18 @@
       </div>
     </div>
   </div>
+  <div v-if="contextMenu.show" class="context-menu" :style="{ top: contextMenu.y + 'px', left: contextMenu.x + 'px' }">
+    <div @click="handleEditMessage">Изменить</div>
+    <div @click="handleDeleteMessage">Удалить</div>
+  </div>
 </template>
-
 <script>
 import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '../stores/auth'
 import api from '../api'
 import Message from '../components/ChatMessage.vue'
 import UserList from '../components/UserList.vue'
+import * as signalR from '@microsoft/signalr'
 
 export default {
   components: { Message, UserList },
@@ -55,6 +59,71 @@ export default {
     const currentChat = ref(null)
     const messageContent = ref('')
     const messages = ref({})
+    const messagesContainer = ref(null)
+
+    // Контекстное меню
+    const contextMenu = ref({
+      show: false,
+      x: 0,
+      y: 0,
+      message: null
+    })
+
+    const currentMessages = computed(() => {
+      return currentChat.value
+          ? messages.value[currentChat.value.id] || []
+          : []
+    })
+
+    // Подключение к SignalR
+    let connection = null;
+
+    const connectSignalR = async () => {
+      const token = sessionStorage.getItem("token");
+
+      connection = new signalR.HubConnectionBuilder()
+          .withUrl("https://messengertester.somee.com/chatHub", {
+            accessTokenFactory: () => token
+          })
+          .build();
+
+      connection.on("ReceiveMessage", (chatId, userId, message) => {
+        if (chatId === currentChat.value?.id) {
+          addMessageToDOM(chatId, userId, message)
+        }
+      });
+
+      connection.on("MessageEdited", (chatId, messageId, newText) => {
+        const msgEl = document.querySelector(`[data-message-id="${messageId}"]`);
+        if (msgEl) {
+          msgEl.innerHTML = `[${msgEl.dataset.userId}]: ${newText}`;
+        }
+      });
+
+      connection.on("MessageDeleted", (chatId, messageId) => {
+        const msgEl = document.querySelector(`[data-message-id="${messageId}"]`);
+        if (msgEl) {
+          msgEl.remove();
+        }
+      });
+
+      try {
+        await connection.start()
+        console.log("SignalR подключён")
+      } catch (err) {
+        console.error("Ошибка подключения к SignalR:", err);
+      }
+    }
+
+    const addMessageToDOM = (chatId, userId, message, messageId = null) => {
+      const messagesEl = document.getElementById("messages");
+      const wrapper = document.createElement("li");
+      wrapper.dataset.messageId = messageId || "";
+      wrapper.dataset.userId = userId;
+      wrapper.innerText = `[${userId}]: ${message}`;
+
+      messagesEl.appendChild(wrapper);
+    }
 
     const loadChats = async () => {
       try {
@@ -69,6 +138,12 @@ export default {
       currentChat.value = chat
       if (!messages.value[chat.id]) {
         await loadMessages(chat.id)
+      }
+
+      try {
+        await connection.invoke("JoinChat", chat.id.toString(), authStore.currentUser.id.toString())
+      } catch (err) {
+        console.error("Не удалось присоединиться к группе чата:", err)
       }
     }
 
@@ -93,7 +168,6 @@ export default {
             authStore.currentUser.id,
             messageContent.value
         )
-
         await loadMessages(currentChat.value.id)
         messageContent.value = ''
       } catch (error) {
@@ -101,14 +175,39 @@ export default {
       }
     }
 
-    const currentMessages = computed(() => {
-      return currentChat.value
-          ? messages.value[currentChat.value.id] || []
-          : []
-    })
+    const showContextMenu = (payload) => {
+      contextMenu.value = {
+        show: true,
+        x: payload.x,
+        y: payload.y,
+        message: payload.message
+      }
+    }
+
+    const handleEditMessage = () => {
+      if (contextMenu.value.message) {
+        const newText = prompt('Редактировать сообщение:', contextMenu.value.message.content)
+        if (newText && newText.trim()) {
+          api.editMessage(contextMenu.value.message.chatId, contextMenu.value.message.id, newText)
+              .then(() => loadMessages(contextMenu.value.message.chatId))
+              .catch(err => console.error('Ошибка редактирования:', err))
+        }
+        contextMenu.value.show = false
+      }
+    }
+
+    const handleDeleteMessage = () => {
+      if (contextMenu.value.message && confirm('Вы уверены?')) {
+        api.deleteMessage(contextMenu.value.message.chatId, contextMenu.value.message.id)
+            .then(() => loadMessages(contextMenu.value.message.chatId))
+            .catch(err => console.error('Ошибка удаления:', err))
+        contextMenu.value.show = false
+      }
+    }
 
     onMounted(() => {
       loadChats()
+      connectSignalR()
     })
 
     return {
@@ -118,7 +217,11 @@ export default {
       messageContent,
       currentMessages,
       openChat,
-      sendMessage
+      sendMessage,
+      showContextMenu,
+      handleEditMessage,
+      handleDeleteMessage,
+      contextMenu
     }
   }
 }
