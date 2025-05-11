@@ -1,48 +1,63 @@
-import * as signalR from '@microsoft/signalr'
+import * as signalR from '@microsoft/signalr';
 
 let connection = null;
-let currentUserId = null;
-let currentChatId = null;
 
-async function connectSignalR() {
-    const token = localStorage.getItem("token");
+export function useChatHub() {
+    const startConnection = async () => {
+        connection = new signalR.HubConnectionBuilder()
+            .withUrl("https://messengertester.somee.com/chatHub")
+            .withAutomaticReconnect()
+            .build();
 
-    connection = new signalR.HubConnectionBuilder()
-        .withUrl("https://messengertester.somee.com/chatHub", {
-            accessTokenFactory: () => localStorage.getItem("token")
-        })
-        .build();
-
-    // Получение новых сообщений
-    connection.on("ReceiveMessage", (chatId, userId, message) => {
-        if (chatId === currentChatId) {
-            addMessageToDOM(chatId, userId, message);
+        try {
+            await connection.start();
+            console.log('SignalR Connected');
+        } catch (err) {
+            console.error('SignalR Connection Error:', err);
         }
-    });
+    };
 
-    // Редактирование сообщения
-    connection.on("MessageEdited", (chatId, messageId, newText) => {
-        const msgEl = document.querySelector(`[data-message-id="${messageId}"]`);
-        if (msgEl) {
-            msgEl.innerHTML = `[${msgEl.dataset.userId}]: ${newText}`;
-        }
-    });
+    const joinChat = async (chatId, userId) => {
+        await connection.invoke('JoinChat', chatId, userId);
+    };
 
-    // Удаление сообщения
-    connection.on("MessageDeleted", (chftId, messageId) => {
-        const msgEl = document.querySelector(`[data-message-id="${messageId}"]`);
-        if (msgEl) {
-            msgEl.remove();
-        }
-    });
+    const leaveChat = async (chatId, userId) => {
+        await connection.invoke('LeaveChat', chatId, userId);
+    };
 
-    try {
-        await connection.start();
-        console.log("SignalR подключён");
-        if (currentUserId) {
-            await loadChats(currentUserId);
-        }
-    } catch (err) {
-        console.error("Ошибка подключения к SignalR:", err);
-    }
+    const sendMessage = async (chatId, userId, message) => {
+        await connection.invoke('SendMessage', chatId, userId, message);
+    };
+
+    const onReceiveMessage = (callback) => {
+        connection.on("ReceiveMessage", callback);
+    };
+
+    const onUserJoined = (callback) => {
+        connection.on("UserJoined", callback);
+    };
+
+    const onUserLeft = (callback) => {
+        connection.on("UserLeft", callback);
+    };
+
+    const onMessageEdited = (callback) => {
+        connection.on("MessageEdited", callback);
+    };
+
+    const onMessageDeleted = (callback) => {
+        connection.on("MessageDeleted", callback);
+    };
+
+    return {
+        startConnection,
+        joinChat,
+        leaveChat,
+        sendMessage,
+        onReceiveMessage,
+        onUserJoined,
+        onUserLeft,
+        onMessageEdited,
+        onMessageDeleted
+    };
 }
