@@ -148,7 +148,7 @@ export default {
 <style scoped>
 .chat-app {
   display: flex;
-  height: 100vh;
+  height: 100%;
 }
 
 .chat-window {
