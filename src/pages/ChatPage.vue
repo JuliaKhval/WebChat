@@ -80,7 +80,7 @@ let connection = null
 const connectSignalR = async () => {
   const token = sessionStorage.getItem("token")
   connection = new signalR.HubConnectionBuilder()
-      .withUrl("https://messengertester.somee.com/chatHub", {
+      .withUrl("https://messengertester.somee.com/chatHub ", {
         accessTokenFactory: () => token
       })
       .build()
@@ -116,9 +116,6 @@ const connectSignalR = async () => {
   try {
     await connection.start();
     console.log("SignalR подключён");
-    if (currentChat.value?.id) {
-      await api.getUserChats(authStore.currentUser.id);
-    }
   } catch (err) {
     console.error("Ошибка подключения к SignalR:", err);
   }
@@ -156,6 +153,16 @@ const loadMessages = async (chatId) => {
     }
   } catch (error) {
     console.error('Ошибка загрузки сообщений:', error)
+  }
+}
+
+// Загрузка списка чатов
+const loadChats = async () => {
+  try {
+    const response = await api.getUserChats(authStore.currentUser.id)
+    userChats.value = response.data
+  } catch (error) {
+    console.error('Ошибка загрузки чатов:', error)
   }
 }
 
