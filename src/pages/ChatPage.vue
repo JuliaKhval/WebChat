@@ -51,7 +51,7 @@ import { useChatHub } from '../api/signalr.js'
 
 export default {
   components: { Message, UserList },
-  setup() {
+  setup: function () {
     const authStore = useAuthStore()
     const userChats = ref([])
     const currentChat = ref(null)
@@ -110,11 +110,12 @@ export default {
 
       try {
         // Отправляем через SignalR
-        await sendMessage(
+        await api.sendMessage(
             currentChat.value.id,
             authStore.currentUser.id,
             messageContent.value
         )
+
 
         messageContent.value = ''
         scrollToBottom()
@@ -125,7 +126,7 @@ export default {
 
     const editMessage = async (chatId, messageId, newText) => {
       try {
-        await api.editMessage(chatId, messageId, { content: newText })
+        await api.editMessage(chatId, messageId, {content: newText})
         await loadMessages(chatId)
       } catch (error) {
         console.error('Ошибка редактирования:', error)
