@@ -49,7 +49,7 @@ export default {
 
     // --- Определяем, своё ли сообщение ---
     const isOwnMessage = computed(() => {
-      if (!props.message.sender || !authStore.currentUser?.id) return false
+      if (!props.message.sender || !authStore.currentUser) return false
 
       const senderId = String(props.message.sender)
       const currentUserId = String(authStore.currentUser.id)
