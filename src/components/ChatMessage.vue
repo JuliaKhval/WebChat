@@ -46,10 +46,8 @@ export default {
     }
   },
   setup(props) {
-
-
     const isOwnMessage = computed(() => {
-      return props.message.sender === authStore.currentUser.username
+      return String(props.message.sender) === String(authStore.currentUser.username)
     })
 
     const showContextMenu = ref(false)
@@ -94,8 +92,12 @@ export default {
 
 <style scoped>
 .message {
+  position: relative;
+  border: 1px solid #eee;
+  padding: 10px;
+  border-radius: 8px;
+  background-color: #f9f9f9;
   max-width: 70%;
-  align-self: flex-start;
 }
 
 .own-message {
