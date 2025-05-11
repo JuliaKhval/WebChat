@@ -12,12 +12,15 @@
           Чат с {{ currentChat.receiverUsername }}
         </div>
 
-        <div class="messages">
+        <div class="messages" ref="messagesContainer">
           <Message
               v-for="message in currentMessages"
               :key="message.id"
               :message="message"
               :current-user-id="authStore.currentUser.id"
+              :connection="connection"
+              @message-edited="handleMessageEdited"
+              @message-deleted="handleMessageDeleted"
           />
         </div>
 
@@ -41,11 +44,12 @@
 </template>
 
 <script>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useAuthStore } from '../stores/auth'
 import api from '../api'
 import Message from '../components/ChatMessage.vue'
 import UserList from '../components/UserList.vue'
+import { HubConnectionBuilder } from '@microsoft/signalr'
 
 export default {
   components: { Message, UserList },
@@ -55,11 +59,63 @@ export default {
     const currentChat = ref(null)
     const messageContent = ref('')
     const messages = ref({})
+    const connection = ref(null)
+    const messagesContainer = ref(null)
+
+    const initSignalR = async () => {
+      const token = localStorage.getItem('token')
+
+      connection.value = new HubConnectionBuilder()
+          .withUrl("https://messengertester.somee.com/chatHub", {
+            accessTokenFactory: () => token
+          })
+          .withAutomaticReconnect()
+          .build()
+
+      connection.value.on("ReceiveMessage", (chatId, userId, content) => {
+        if (messages.value[chatId] && chatId === currentChat.value?.id) {
+          messages.value[chatId].push({
+            id: Date.now(),
+            chatId,
+            senderId: userId,
+            content,
+            createdDataTime: new Date().toISOString()
+          })
+          scrollToBottom()
+        }
+      })
+
+      connection.value.on("MessageEdited", (chatId, messageId, newText) => {
+        if (messages.value[chatId] && chatId === currentChat.value?.id) {
+          const messageIndex = messages.value[chatId].findIndex(m => m.id === messageId)
+          if (messageIndex !== -1) {
+            messages.value[chatId][messageIndex].content = newText
+          }
+        }
+      })
+
+      connection.value.on("MessageDeleted", (chatId, messageId) => {
+        if (messages.value[chatId] && chatId === currentChat.value?.id) {
+          messages.value[chatId] = messages.value[chatId].filter(m => m.id !== messageId)
+        }
+      })
+
+      try {
+        await connection.value.start()
+        console.log("SignalR подключён")
+      } catch (err) {
+        console.error("Ошибка подключения SignalR:", err)
+        setTimeout(initSignalR, 5000)
+      }
+    }
 
     const loadChats = async () => {
       try {
         const response = await api.getUserChats(authStore.currentUser.id)
         userChats.value = response.data
+        if (userChats.value.length > 0) {
+          await openChat(userChats.value[0])
+        }
       } catch (error) {
         console.error('Ошибка загрузки чатов:', error)
       }
@@ -70,6 +126,14 @@ export default {
       if (!messages.value[chat.id]) {
         await loadMessages(chat.id)
       }
+
+      if (connection.value) {
+        try {
+          await connection.value.invoke("JoinChat", chat.id.toString(), authStore.currentUser.id.toString())
+        } catch (err) {
+          console.error("Ошибка входа в чат:", err)
+        }
+      }
     }
 
     const loadMessages = async (chatId) => {
@@ -79,6 +143,7 @@ export default {
           ...messages.value,
           [chatId]: response.data
         }
+        scrollToBottom()
       } catch (error) {
         console.error('Ошибка загрузки сообщений:', error)
       }
@@ -88,28 +153,84 @@ export default {
       if (!messageContent.value.trim() || !currentChat.value) return
 
       try {
-        await api.sendMessage(
-            currentChat.value.id,
-            authStore.currentUser.id,
-            messageContent.value
-        )
-
-        await loadMessages(currentChat.value.id)
+        if (connection.value) {
+          await connection.value.invoke("SendMessage",
+              currentChat.value.id,
+              authStore.currentUser.id,
+              messageContent.value
+          )
+        } else {
+          await api.sendMessage(
+              currentChat.value.id,
+              authStore.currentUser.id,
+              messageContent.value
+          )
+        }
         messageContent.value = ''
       } catch (error) {
         console.error('Ошибка отправки сообщения:', error)
       }
     }
 
+    const handleMessageEdited = async ({ messageId, newText }) => {
+      if (!currentChat.value) return
+
+      try {
+        if (connection.value) {
+          await connection.value.invoke("EditMessage",
+              currentChat.value.id,
+              messageId,
+              newText
+          )
+        } else {
+          await api.editMessage(currentChat.value.id, messageId, newText)
+        }
+      } catch (error) {
+        console.error('Ошибка редактирования:', error)
+      }
+    }
+
+    const handleMessageDeleted = async (messageId) => {
+      if (!currentChat.value) return
+
+      try {
+        if (connection.value) {
+          await connection.value.invoke("DeleteMessage",
+              currentChat.value.id,
+              messageId
+          )
+        } else {
+          await api.deleteMessage(currentChat.value.id, messageId)
+        }
+      } catch (error) {
+        console.error('Ошибка удаления:', error)
+      }
+    }
+
+    const scrollToBottom = () => {
+      setTimeout(() => {
+        if (messagesContainer.value) {
+          messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
+        }
+      }, 100)
+    }
+
     const currentMessages = computed(() => {
-      return currentChat.value
-          ? messages.value[currentChat.value.id] || []
-          : []
+      return currentChat.value ? messages.value[currentChat.value.id] || [] : []
     })
 
     onMounted(() => {
+      initSignalR()
       loadChats()
     })
+
+    onUnmounted(() => {
+      if (connection.value) {
+        connection.value.stop()
+      }
+    })
+
+    watch(currentMessages, scrollToBottom, { deep: true })
 
     return {
       authStore,
@@ -117,13 +238,16 @@ export default {
       currentChat,
       messageContent,
       currentMessages,
+      messagesContainer,
+      connection,
       openChat,
-      sendMessage
+      sendMessage,
+      handleMessageEdited,
+      handleMessageDeleted
     }
   }
 }
 </script>
-
 
 <style scoped>
 .chat-app {
