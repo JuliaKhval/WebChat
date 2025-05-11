@@ -5,12 +5,17 @@
   >
     <div class="message-header">
       <strong>{{ message.sender }}</strong>
-      <span>{{ formatDate(message.createdDataTime) }}</span>
+
     </div>
 
     <div class="message-content">
       {{ message.content }}
     </div>
+    <div class="message-footer">
+      <span>{{ formatDate(message.createdDataTime) }}</span>
+
+    </div>
+
 
     <!-- Контекстное меню -->
     <div v-if="showContextMenu" class="context-menu">
@@ -129,7 +134,13 @@ export default {
   font-size: 0.9em;
   margin-bottom: 5px;
 }
-
+.message-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.9em;
+  margin-bottom: 5px;
+}
 .context-menu {
   position: absolute;
   right: 10px;
