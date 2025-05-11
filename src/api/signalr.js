@@ -3,10 +3,10 @@ import * as signalR from '@microsoft/signalr'
 let connection = null
 
 export function initSignalRConnection() {
-    const token = localStorage.getItem('token')
+    const token = sessionStorage.getItem("token")
 
     connection = new signalR.HubConnectionBuilder()
-        .withUrl("https://messengertester.somee.com/chatHub ", {
+        .withUrl("https://messengertester.somee.com/chatHub", {
             accessTokenFactory: () => token,
         })
         .withAutomaticReconnect()

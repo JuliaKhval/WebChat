@@ -80,11 +80,18 @@ export default {
     // --- Открытие чата ---
     const openChat = async (chat) => {
       currentChat.value = chat
+
       if (!messages.value[chat.id]) {
         await loadMessages(chat.id)
       }
 
-      joinChat(chat.id, currentUserId)
+      // Ждём, пока соединение будет готово
+      const interval = setInterval(async () => {
+        if (connection?.state === signalR.HubConnectionState.Connected) {
+          clearInterval(interval)
+          joinChat(chat.id, authStore.currentUser.id)
+        }
+      }, 500)
     }
 
     // --- Загрузка сообщений ---
@@ -117,13 +124,10 @@ export default {
 
         if (res.status === 200) {
           const newMessage = res.data
-
-          // Локально добавляем
           messages.value[chatId] = [...(messages.value[chatId] || []), newMessage]
           messageContent.value = ''
           nextTick(scrollToBottom)
 
-          // Через SignalR рассылаем всем участникам
           await safeInvoke('SendMessage', chatId, newMessage)
         }
       } catch (error) {
