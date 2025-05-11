@@ -24,8 +24,7 @@
 
 <script>
 import { computed, ref } from 'vue'
-import { useAuthStore } from '@/stores/auth'
-const authStore = useAuthStore()
+
 export default {
   props: {
     message: {
@@ -46,10 +45,7 @@ export default {
     }
   },
   setup(props) {
-    const isOwnMessage = computed(() => {
-      return String(props.message.sender) === String(authStore.currentUser.username)
-    })
-
+    const isOwnMessage = computed(() => props.message.sender === props.currentUserId)
     const showContextMenu = ref(false)
 
     const toggleMenu = () => {
