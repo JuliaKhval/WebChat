@@ -77,10 +77,10 @@ const currentMessages = computed(() => {
 let connection = null
 
 // Подключение SignalR
-const connectSignalR = () => {
-  const token = localStorage.getItem("token")
+const connectSignalR = async () => {
+  const token = sessionStorage.getItem("token")
   connection = new signalR.HubConnectionBuilder()
-      .withUrl("https://messengertester.somee.com/chatHub ", {
+      .withUrl("https://messengertester.somee.com/chatHub", {
         accessTokenFactory: () => token
       })
       .build()
@@ -113,10 +113,15 @@ const connectSignalR = () => {
     }
   })
 
-  // Запуск подключения
-  connection.start().catch(err => {
-    console.error("Ошибка подключения SignalR:", err)
-  })
+  try {
+    await connection.start();
+    console.log("SignalR подключён");
+    if (currentChat.value?.id) {
+      await api.getUserChats(authStore.currentUser.id);
+    }
+  } catch (err) {
+    console.error("Ошибка подключения к SignalR:", err);
+  }
 }
 
 // Добавление сообщения в интерфейс
