@@ -111,13 +111,22 @@ export default {
 
     const loadChats = async () => {
       try {
+        const token = sessionStorage.getItem('token')
+        if (!token) throw new Error('Токен не найден')
+
         const response = await api.getUserChats(authStore.currentUser.id)
         userChats.value = response.data
+
         if (userChats.value.length > 0) {
           await openChat(userChats.value[0])
         }
       } catch (error) {
         console.error('Ошибка загрузки чатов:', error)
+        if (error.response?.status === 401) {
+          // Токен недействителен
+          await authStore.logout()
+          router.push('/login')
+        }
       }
     }
 
