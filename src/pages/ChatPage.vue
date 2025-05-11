@@ -80,7 +80,7 @@ let connection = null
 const connectSignalR = async () => {
   const token = sessionStorage.getItem("token")
   connection = new signalR.HubConnectionBuilder()
-      .withUrl("https://messengertester.somee.com/chatHub ", {
+      .withUrl("https://messengertester.somee.com/chatHub", {
         accessTokenFactory: () => token
       })
       .build()
