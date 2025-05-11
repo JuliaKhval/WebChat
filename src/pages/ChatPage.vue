@@ -47,6 +47,7 @@ import { useAuthStore } from '../stores/auth'
 import api from '../api'
 import Message from '../components/ChatMessage.vue'
 import UserList from '../components/UserList.vue'
+import signalr from '../api/signalr.js'
 
 export default {
   components: { Message, UserList },
@@ -69,6 +70,12 @@ export default {
 
     const openChat = async (chat) => {
       currentChat.value = chat
+      try {
+        await signalr.connection.invoke("JoinChat", chat.id.toString(), authStore.currentUser.id.toString());
+        await loadMessages(chat.id);
+      } catch (err) {
+        console.error("Ошибка при выборе чата:", err);
+      }
       if (!messages.value[chat.id]) {
         await loadMessages(chat.id)
       }
