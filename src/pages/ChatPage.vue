@@ -2,29 +2,24 @@
   <div class="chat-app">
     <UserList
         :chats="userChats"
-        :selected-chat="currentChatId"
-        @select-chat="selectChat"
+        :selected-chat="currentChat"
+        @select-chat="openChat"
     />
 
     <div class="chat-window">
-      <div v-if="currentChatId" class="active-chat">
+      <div v-if="currentChat" class="active-chat">
         <div class="chat-header">
-          Чат {{ currentChatId }}
+          Чат с {{ currentChat.receiverUsername }}
         </div>
 
         <div ref="messagesContainer" class="messages">
           <Message
-              v-for="message in messages"
+              v-for="message in currentMessages"
               :key="message.id"
-              :message="{
-              id: message.id,
-              sender: message.userId,
-              content: message.content,
-              createdDataTime: message.createdAt || new Date().toISOString()
-            }"
-              :current-user="currentUserId"
-              @edit="editMessage(currentChatId, message.id, $event)"
-              @delete="deleteMessage(currentChatId, message.id)"
+              :message="message"
+              :current-user-id="authStore.currentUser.id"
+              @edit="editMessage(currentChat.id, message.id, $event)"
+              @delete="deleteMessage(currentChat.id, message.id)"
           />
         </div>
 
@@ -46,190 +41,181 @@
     </div>
   </div>
 </template>
-
 <script>
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, nextTick, onUnmounted } from 'vue'
+import { useAuthStore } from '../stores/auth'
+import api from '../api'
 import Message from '../components/ChatMessage.vue'
 import UserList from '../components/UserList.vue'
+import { HubConnectionBuilder, LogLevel } from '@microsoft/signalr'
 
 export default {
   components: { Message, UserList },
   setup() {
-    // Ваши существующие переменные
-    let connection = null;
-    const currentUserId = ref(localStorage.getItem("currentUserId") || null);
-    const currentChatId = ref(null);
-    const messageContent = ref('');
-    const messages = ref([]);
-    const messagesContainer = ref(null);
-    const userChats = ref([]);
+    const authStore = useAuthStore()
+    const userChats = ref([])
+    const currentChat = ref(null)
+    const messageContent = ref('')
+    const messages = ref({})
+    const messagesContainer = ref(null)
+    const connection = ref(null)
 
-    // Ваши существующие SignalR функции
-    async function connectSignalR() {
-      const token = localStorage.getItem("token");
+    const loadChats = async () => {
+      try {
+        const response = await api.getUserChats(authStore.currentUser.id)
+        userChats.value = response.data
+      } catch (error) {
+        console.error('Ошибка загрузки чатов:', error)
+      }
+    }
 
-      connection = new signalR.HubConnectionBuilder()
-          .withUrl("https://messengertester.somee.com/chatHub", {
-            accessTokenFactory: () => token
-          })
-          .build();
+    const openChat = async (chat) => {
+      currentChat.value = chat
+      if (!messages.value[chat.id]) {
+        await loadMessages(chat.id)
+      }
+    }
 
-      connection.on("ReceiveMessage", (chatId, userId, message) => {
-        if (chatId === currentChatId.value) {
-          addMessageToDOM(chatId, userId, message);
+    const loadMessages = async (chatId) => {
+      try {
+        const response = await api.getChatMessages(chatId)
+        messages.value = {
+          ...messages.value,
+          [chatId]: response.data
         }
-      });
 
-      connection.on("MessageEdited", (chatId, messageId, newText) => {
-        const index = messages.value.findIndex(m => m.id === messageId);
-        if (index !== -1) {
-          messages.value[index].content = newText;
-        }
-      });
+        nextTick(() => {
+          scrollToBottom()
+        })
+      } catch (error) {
+        console.error('Ошибка загрузки сообщений:', error)
+      }
+    }
 
-      connection.on("MessageDeleted", (chatId, messageId) => {
-        messages.value = messages.value.filter(m => m.id !== messageId);
-      });
+    const scrollToBottom = () => {
+      messagesContainer.value?.scrollTo({
+        top: messagesContainer.value.scrollHeight,
+        behavior: "smooth"
+      })
+    }
+
+    const sendMessage = async () => {
+      if (!messageContent.value.trim() || !currentChat.value) return
 
       try {
-        await connection.start();
-        console.log("SignalR подключён");
-      } catch (err) {
-        console.error("Ошибка подключения к SignalR:", err);
+        await connection.value.invoke("SendMessage", {
+          chatId: currentChat.value.id,
+          senderId: authStore.currentUser.id,
+          content: messageContent.value
+        })
+
+        messageContent.value = ''
+      } catch (error) {
+        console.error('Ошибка отправки сообщения:', error)
       }
     }
 
-    async function addMessageToDOM(chatId, userId, message, messageId = null) {
-      messages.value.push({
-        id: messageId,
-        userId,
-        content: message,
-        createdAt: new Date().toISOString()
-      });
-
-      await nextTick(() => {
-        messagesContainer.value?.scrollTo({
-          top: messagesContainer.value.scrollHeight,
-          behavior: "smooth"
-        });
-      });
-    }
-
-    async function loadChats(userId) {
-      const token = localStorage.getItem("token");
-      const res = await fetch(`https://messengertester.somee.com/chat/${userId}/chats`, {
-        headers: { 'Authorization': 'Bearer ' + token }
-      });
-
-      if (res.ok) {
-        userChats.value = await res.json();
-      } else {
-        console.error("Ошибка загрузки чатов");
-      }
-    }
-
-    async function selectChat(chatId) {
-      currentChatId.value = chatId;
-      await loadMessages(chatId);
-
+    const editMessage = async (chatId, messageId, newText) => {
       try {
-        await connection.invoke("JoinChat", chatId.toString(), currentUserId.value.toString());
+        await api.editMessage(chatId, messageId, { content: newText })
+        // Можно также отправить через SignalR для мгновенного обновления у всех участников
+        await connection.value.invoke("EditMessage", {
+          chatId,
+          messageId,
+          newText
+        })
+      } catch (error) {
+        console.error('Ошибка редактирования сообщения:', error)
+      }
+    }
+
+    const deleteMessage = async (chatId, messageId) => {
+      try {
+        await api.deleteMessage(chatId, messageId)
+        // Можно также отправить через SignalR для мгновенного обновления у всех участников
+        await connection.value.invoke("DeleteMessage", {
+          chatId,
+          messageId
+        })
+      } catch (error) {
+        console.error('Ошибка удаления сообщения:', error)
+      }
+    }
+
+    const currentMessages = computed(() => {
+      return currentChat.value
+          ? messages.value[currentChat.value.id] || []
+          : []
+    })
+
+    const initializeSignalR = async () => {
+      try {
+        connection.value = new HubConnectionBuilder()
+            .withUrl("https://messengertester.somee.com/chatHub") // Убедитесь, что этот URL соответствует вашему бэкенду
+            .configureLogging(LogLevel.Information)
+            .build()
+
+        connection.value.on("ReceiveMessage", (message) => {
+          const chatId = message.chatId
+          if (!messages.value[chatId]) {
+            messages.value[chatId] = []
+          }
+
+          // Проверяем, нет ли уже такого сообщения
+          if (!messages.value[chatId].some(m => m.id === message.id)) {
+            messages.value[chatId].push(message)
+            nextTick(() => {
+              if (currentChat.value?.id === chatId) {
+                scrollToBottom()
+              }
+            })
+          }
+        })
+
+        connection.value.on("MessageEdited", ({ chatId, messageId, newText }) => {
+          if (messages.value[chatId]) {
+            const messageIndex = messages.value[chatId].findIndex(m => m.id === messageId)
+            if (messageIndex !== -1) {
+              messages.value[chatId][messageIndex].content = newText
+            }
+          }
+        })
+
+        connection.value.on("MessageDeleted", ({ chatId, messageId }) => {
+          if (messages.value[chatId]) {
+            messages.value[chatId] = messages.value[chatId].filter(m => m.id !== messageId)
+          }
+        })
+
+        await connection.value.start()
+        console.log("SignalR подключен")
+
+        // После подключения, подписываемся на чаты пользователя
+        await connection.value.invoke("SubscribeToUserChats", authStore.currentUser.id)
       } catch (err) {
-        console.error("Ошибка при выборе чата:", err);
+        console.error("Ошибка подключения SignalR:", err)
       }
     }
 
-    async function loadMessages(chatId) {
-      const token = localStorage.getItem("token");
-      const res = await fetch(`https://messengertester.somee.com/message/${chatId}/messages`, {
-        headers: { 'Authorization': 'Bearer ' + token }
-      });
+    onMounted(async () => {
+      await loadChats()
+      await initializeSignalR()
+    })
 
-      if (res.ok) {
-        messages.value = await res.json();
-        await nextTick(() => {
-          messagesContainer.value?.scrollTo({
-            top: messagesContainer.value.scrollHeight,
-            behavior: "smooth"
-          });
-        });
-      } else {
-        console.error("Ошибка загрузки сообщений");
+    onUnmounted(async () => {
+      if (connection.value) {
+        await connection.value.stop()
       }
-    }
-
-    async function sendMessage() {
-      if (!currentChatId.value) {
-        alert("Выберите чат");
-        return;
-      }
-
-      const content = messageContent.value.trim();
-      if (!content) return;
-
-      const token = localStorage.getItem("token");
-      const res = await fetch(`https://messengertester.somee.com/message/${currentChatId.value}/messages/${currentUserId.value}/Add`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + token
-        },
-        body: JSON.stringify({ content })
-      });
-
-      if (res.ok) {
-        messageContent.value = "";
-      } else {
-        alert("Ошибка отправки сообщения");
-      }
-    }
-
-    async function editMessage(chatId, messageId, newText) {
-      const token = localStorage.getItem("token");
-      const res = await fetch(`https://messengertester.somee.com/message/${chatId}/messages/${messageId}/Edit`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + token
-        },
-        body: JSON.stringify(newText)
-      });
-
-      if (!res.ok) {
-        alert("Ошибка изменения сообщения");
-      }
-    }
-
-    async function deleteMessage(chatId, messageId) {
-      if (!confirm("Вы уверены, что хотите удалить это сообщение?")) return;
-
-      const token = localStorage.getItem("token");
-      const res = await fetch(`https://messengertester.somee.com/message/${chatId}/messages/${messageId}/Delete`, {
-        method: 'DELETE',
-        headers: { 'Authorization': 'Bearer ' + token }
-      });
-
-      if (!res.ok) {
-        alert("Ошибка удаления сообщения");
-      }
-    }
-
-    // Инициализация
-    onMounted(() => {
-      connectSignalR();
-      if (currentUserId.value) {
-        loadChats(currentUserId.value);
-      }
-    });
+    })
 
     return {
-      currentUserId,
-      currentChatId,
+      authStore,
       userChats,
-      messages,
+      currentChat,
       messageContent,
+      currentMessages,
       messagesContainer,
-      selectChat,
+      openChat,
       sendMessage,
       editMessage,
       deleteMessage
@@ -239,7 +225,6 @@ export default {
 </script>
 
 <style scoped>
-/* Стили остаются без изменений */
 .chat-app {
   display: flex;
   height: 100vh;
@@ -279,6 +264,7 @@ export default {
   display: flex;
   flex-direction: column;
   gap: 10px;
+
 }
 
 .message-input {
