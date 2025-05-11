@@ -1,53 +1,45 @@
-import * as signalR from '@microsoft/signalr';
+import * as signalR from '@microsoft/signalr'
 
-let connection = null;
+let connection = null
 
 export function useChatHub() {
     const startConnection = async () => {
         connection = new signalR.HubConnectionBuilder()
             .withUrl("https://messengertester.somee.com/chatHub")
             .withAutomaticReconnect()
-            .build();
+            .build()
 
         try {
-            await connection.start();
-            console.log('SignalR Connected');
+            await connection.start()
+            console.log('SignalR успешно подключён')
         } catch (err) {
-            console.error('SignalR Connection Error:', err);
+            console.error('Ошибка подключения SignalR:', err)
         }
-    };
+    }
 
     const joinChat = async (chatId, userId) => {
-        await connection.invoke('JoinChat', chatId, userId);
-    };
+        await connection.invoke('JoinChat', chatId.toString(), userId.toString())
+    }
 
     const leaveChat = async (chatId, userId) => {
-        await connection.invoke('LeaveChat', chatId, userId);
-    };
+        await connection.invoke('LeaveChat', chatId.toString(), userId.toString())
+    }
 
-    const sendMessage = async (chatId, userId, message) => {
-        await connection.invoke('SendMessage', chatId, userId, message);
-    };
+    const sendMessage = async (chatId, userId, messageContent) => {
+        await connection.invoke('SendMessage', chatId.toString(), userId.toString(), messageContent)
+    }
 
     const onReceiveMessage = (callback) => {
-        connection.on("ReceiveMessage", callback);
-    };
-
-    const onUserJoined = (callback) => {
-        connection.on("UserJoined", callback);
-    };
-
-    const onUserLeft = (callback) => {
-        connection.on("UserLeft", callback);
-    };
+        connection.on('ReceiveMessage', callback)
+    }
 
     const onMessageEdited = (callback) => {
-        connection.on("MessageEdited", callback);
-    };
+        connection.on('MessageEdited', callback)
+    }
 
     const onMessageDeleted = (callback) => {
-        connection.on("MessageDeleted", callback);
-    };
+        connection.on('MessageDeleted', callback)
+    }
 
     return {
         startConnection,
@@ -55,9 +47,7 @@ export function useChatHub() {
         leaveChat,
         sendMessage,
         onReceiveMessage,
-        onUserJoined,
-        onUserLeft,
         onMessageEdited,
         onMessageDeleted
-    };
+    }
 }
