@@ -96,10 +96,6 @@ export default {
   max-width: 70%;
 }
 
-.own-message {
-  align-self: flex-end;
-  background-color: #dcf8c6;
-}
 
 .message-header {
   display: flex;
