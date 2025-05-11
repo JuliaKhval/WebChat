@@ -9,7 +9,7 @@
     <div class="chat-window">
       <div v-if="currentChat" class="active-chat">
         <div class="chat-header">
-          Chat with {{ currentChat.receiverUsername }}
+          Чат с {{ currentChat.receiverUsername }}
         </div>
 
         <div class="messages" ref="messagesContainer">
@@ -27,17 +27,17 @@
         <div class="message-input">
           <input
               v-model="messageContent"
-              placeholder="Type a message..."
+              placeholder="Введите сообщение..."
               @keyup.enter="sendMessage"
           >
           <button @click="sendMessage">
-            Send
+            Отправить
           </button>
         </div>
       </div>
 
       <div v-else class="no-chat">
-        <p>Select a chat to start messaging</p>
+        <p>Выберите чат для начала общения</p>
       </div>
     </div>
   </div>
@@ -49,7 +49,7 @@ import { useAuthStore } from '../stores/auth'
 import api from '../api'
 import Message from '../components/ChatMessage.vue'
 import UserList from '../components/UserList.vue'
-import * as signalR from '@microsoft/signalr'
+import { HubConnectionBuilder, LogLevel } from '@microsoft/signalr'
 
 export default {
   components: { Message, UserList },
@@ -62,45 +62,61 @@ export default {
     const connection = ref(null)
     const messagesContainer = ref(null)
 
-    // Initialize SignalR connection
     const initSignalR = async () => {
-      const token = localStorage.getItem("token")
-
-      connection.value = new signalR.HubConnectionBuilder()
-          .withUrl("https://messengertester.somee.com/chatHub", {
-            accessTokenFactory: () => token
-          })
-          .withAutomaticReconnect()
-          .build()
-
-      // Setup SignalR handlers
-      connection.value.on("ReceiveMessage", (chatId, message) => {
-        if (messages.value[chatId]) {
-          messages.value[chatId].push(message)
-          scrollToBottom()
-        }
-      })
-
-      connection.value.on("MessageEdited", (chatId, messageId, newText) => {
-        if (messages.value[chatId]) {
-          const messageIndex = messages.value[chatId].findIndex(m => m.id === messageId)
-          if (messageIndex !== -1) {
-            messages.value[chatId][messageIndex].content = newText
-          }
-        }
-      })
-
-      connection.value.on("MessageDeleted", (chatId, messageId) => {
-        if (messages.value[chatId]) {
-          messages.value[chatId] = messages.value[chatId].filter(m => m.id !== messageId)
-        }
-      })
-
       try {
+        const token = localStorage.getItem("token")
+
+        connection.value = new HubConnectionBuilder()
+            .withUrl("https://messengertester.somee.com/chatHub", {
+              accessTokenFactory: () => token
+            })
+            .configureLogging(LogLevel.Information)
+            .withAutomaticReconnect()
+            .build()
+
+        // Обработчики SignalR
+        connection.value.on("ReceiveMessage", (message) => {
+          addMessageToChat(message.chatId, message)
+          scrollToBottom()
+        })
+
+        connection.value.on("MessageEdited", (chatId, messageId, newContent) => {
+          updateMessageContent(chatId, messageId, newContent)
+        })
+
+        connection.value.on("MessageDeleted", (chatId, messageId) => {
+          removeMessage(chatId, messageId)
+        })
+
         await connection.value.start()
-        console.log("SignalR Connected")
+        console.log("SignalR подключен")
       } catch (err) {
-        console.error("SignalR Connection Error:", err)
+        console.error("Ошибка подключения SignalR:", err)
+        setTimeout(initSignalR, 5000) // Переподключение через 5 секунд
+      }
+    }
+
+    const addMessageToChat = (chatId, message) => {
+      if (!messages.value[chatId]) {
+        messages.value[chatId] = []
+      }
+      if (!messages.value[chatId].some(m => m.id === message.id)) {
+        messages.value[chatId].push(message)
+      }
+    }
+
+    const updateMessageContent = (chatId, messageId, newContent) => {
+      if (messages.value[chatId]) {
+        const message = messages.value[chatId].find(m => m.id === messageId)
+        if (message) {
+          message.content = newContent
+        }
+      }
+    }
+
+    const removeMessage = (chatId, messageId) => {
+      if (messages.value[chatId]) {
+        messages.value[chatId] = messages.value[chatId].filter(m => m.id !== messageId)
       }
     }
 
@@ -108,15 +124,13 @@ export default {
       try {
         const response = await api.getUserChats(authStore.currentUser.id)
         userChats.value = response.data
-
-        // Connect to SignalR after loading chats
         await initSignalR()
 
         if (userChats.value.length > 0) {
           await openChat(userChats.value[0])
         }
       } catch (error) {
-        console.error('Error loading chats:', error)
+        console.error('Ошибка загрузки чатов:', error)
       }
     }
 
@@ -126,12 +140,11 @@ export default {
         await loadMessages(chat.id)
       }
 
-      // Join the SignalR group for this chat
       if (connection.value) {
         try {
-          await connection.value.invoke("JoinChat", chat.id.toString(), authStore.currentUser.id.toString())
+          await connection.value.invoke("JoinChat", chat.id.toString())
         } catch (err) {
-          console.error("Error joining chat:", err)
+          console.error("Ошибка входа в чат:", err)
         }
       }
     }
@@ -145,60 +158,85 @@ export default {
         }
         scrollToBottom()
       } catch (error) {
-        console.error('Error loading messages:', error)
+        console.error('Ошибка загрузки сообщений:', error)
       }
     }
 
     const sendMessage = async () => {
-      if (!messageContent.value.trim() || !currentChat.value) return
+      if (!messageContent.value.trim() || !currentChat.value || !connection.value) return
 
       try {
-        // Send via SignalR
-        if (connection.value) {
-          await connection.value.invoke(
-              "SendMessage",
+        await connection.value.invoke("SendMessage", {
+          ChatId: currentChat.value.id,
+          SenderId: authStore.currentUser.id,
+          Content: messageContent.value
+        })
+        messageContent.value = ''
+      } catch (error) {
+        console.error('Ошибка отправки сообщения:', error)
+        // Fallback to API if SignalR fails
+        try {
+          await api.sendMessage(
               currentChat.value.id,
               authStore.currentUser.id,
               messageContent.value
           )
           messageContent.value = ''
-          scrollToBottom()
-        } else {
-          console.error("SignalR connection not established")
+        } catch (apiError) {
+          console.error('Ошибка API при отправке:', apiError)
         }
+      }
+    }
+
+    const handleMessageEdited = async ({ messageId, newText }) => {
+      if (!currentChat.value || !connection.value) return
+
+      try {
+        await connection.value.invoke("EditMessage", {
+          ChatId: currentChat.value.id,
+          MessageId: messageId,
+          NewContent: newText
+        })
       } catch (error) {
-        console.error('Error sending message:', error)
-      }
-    }
-
-    const handleMessageEdited = ({ chatId, messageId, newText }) => {
-      if (messages.value[chatId]) {
-        const messageIndex = messages.value[chatId].findIndex(m => m.id === messageId)
-        if (messageIndex !== -1) {
-          messages.value[chatId][messageIndex].content = newText
+        console.error('Ошибка редактирования:', error)
+        // Fallback to API
+        try {
+          await api.editMessage(currentChat.value.id, messageId, newText)
+        } catch (apiError) {
+          console.error('Ошибка API при редактировании:', apiError)
         }
       }
     }
 
-    const handleMessageDeleted = ({ chatId, messageId }) => {
-      if (messages.value[chatId]) {
-        messages.value[chatId] = messages.value[chatId].filter(m => m.id !== messageId)
+    const handleMessageDeleted = async (messageId) => {
+      if (!currentChat.value || !connection.value) return
+
+      try {
+        await connection.value.invoke("DeleteMessage", {
+          ChatId: currentChat.value.id,
+          MessageId: messageId
+        })
+      } catch (error) {
+        console.error('Ошибка удаления:', error)
+        // Fallback to API
+        try {
+          await api.deleteMessage(currentChat.value.id, messageId)
+        } catch (apiError) {
+          console.error('Ошибка API при удалении:', apiError)
+        }
       }
     }
 
     const scrollToBottom = () => {
-      if (messagesContainer.value) {
-        // Use nextTick to wait for DOM update
-        setTimeout(() => {
+      setTimeout(() => {
+        if (messagesContainer.value) {
           messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
-        }, 0)
-      }
+        }
+      }, 100)
     }
 
     const currentMessages = computed(() => {
-      return currentChat.value
-          ? messages.value[currentChat.value.id] || []
-          : []
+      return currentChat.value ? messages.value[currentChat.value.id] || [] : []
     })
 
     onMounted(() => {
@@ -211,10 +249,7 @@ export default {
       }
     })
 
-    // Watch for current chat changes to scroll to bottom
-    watch(currentMessages, () => {
-      scrollToBottom()
-    }, { deep: true })
+    watch(currentMessages, scrollToBottom, { deep: true })
 
     return {
       authStore,
@@ -232,69 +267,3 @@ export default {
   }
 }
 </script>
-
-<style scoped>
-.chat-app {
-  display: flex;
-  height: calc(100vh - 60px);
-}
-
-.chat-window {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-}
-
-.active-chat {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-}
-
-.no-chat {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 100%;
-  color: #999;
-}
-
-.chat-header {
-  padding: 15px;
-  border-bottom: 1px solid #e0e0e0;
-  font-weight: bold;
-  text-align: center;
-}
-
-.messages {
-  flex: 1;
-  padding: 15px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.message-input {
-  display: flex;
-  padding: 15px;
-  border-top: 1px solid #e0e0e0;
-}
-
-.message-input input {
-  flex: 1;
-  padding: 10px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  margin-right: 10px;
-}
-
-.message-input button {
-  padding: 10px 20px;
-  background: #4CAF50;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-}
-</style>

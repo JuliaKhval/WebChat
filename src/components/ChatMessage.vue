@@ -1,23 +1,25 @@
 <template>
   <div
       :class="['message', { 'own-message': isOwnMessage }]"
-      @contextmenu.prevent="showContextMenu($event)"
+      @contextmenu.prevent="handleContextMenu"
       ref="messageElement"
   >
     <div class="message-header">
-      <strong>{{ message.sender }}</strong>
-      <span>{{ formatDate(message.createdDataTime) }}</span>
+      <strong>{{ message.senderUsername || message.sender }}</strong>
+      <span>{{ formatDate(message.createdDataTime || message.timestamp) }}</span>
     </div>
     <div class="message-content">
       {{ message.content }}
     </div>
 
-    <div v-if="contextMenuVisible"
-         class="context-menu"
-         :style="{ top: contextMenuY + 'px', left: contextMenuX + 'px' }"
-         @click.stop>
-      <button v-if="isOwnMessage" @click="editMessage">Edit</button>
-      <button v-if="isOwnMessage" @click="deleteMessage">Delete</button>
+    <div
+        v-if="contextMenuVisible"
+        class="context-menu"
+        :style="{ top: contextMenuPosition.y + 'px', left: contextMenuPosition.x + 'px' }"
+        @click.stop
+    >
+      <button v-if="isOwnMessage" @click="editMessage">Изменить</button>
+      <button v-if="isOwnMessage" @click="deleteMessage">Удалить</button>
     </div>
   </div>
 </template>
@@ -37,18 +39,19 @@ export default {
     },
     connection: {
       type: Object,
-      required: true
+      default: null
     }
   },
+  emits: ['message-edited', 'message-deleted'],
   setup(props, { emit }) {
     const isOwnMessage = computed(() => props.message.senderId === props.currentUserId)
     const contextMenuVisible = ref(false)
-    const contextMenuX = ref(0)
-    const contextMenuY = ref(0)
+    const contextMenuPosition = ref({ x: 0, y: 0 })
     const messageElement = ref(null)
 
     const formatDate = (dateString) => {
-      return new Date(dateString).toLocaleTimeString([], {
+      const date = new Date(dateString)
+      return date.toLocaleTimeString([], {
         hour: '2-digit',
         minute: '2-digit',
         day: '2-digit',
@@ -56,11 +59,13 @@ export default {
       })
     }
 
-    const showContextMenu = (event) => {
+    const handleContextMenu = (event) => {
       if (!isOwnMessage.value) return
 
-      contextMenuX.value = event.clientX
-      contextMenuY.value = event.clientY
+      contextMenuPosition.value = {
+        x: event.clientX,
+        y: event.clientY
+      }
       contextMenuVisible.value = true
     }
 
@@ -69,23 +74,23 @@ export default {
     }
 
     const editMessage = () => {
-      const newText = prompt('Edit message:', props.message.content)
-      if (newText && newText.trim() !== '' && newText !== props.message.content) {
-        props.connection.invoke('EditMessage', props.message.chatId, props.message.id, newText)
-            .catch(err => console.error('Error editing message:', err))
+      const newText = prompt('Изменить сообщение:', props.message.content)
+      if (newText && newText.trim() && newText !== props.message.content) {
+        emit('message-edited', {
+          messageId: props.message.id,
+          newText: newText
+        })
       }
       hideContextMenu()
     }
 
     const deleteMessage = () => {
-      if (confirm('Are you sure you want to delete this message?')) {
-        props.connection.invoke('DeleteMessage', props.message.chatId, props.message.id)
-            .catch(err => console.error('Error deleting message:', err))
+      if (confirm('Вы уверены, что хотите удалить это сообщение?')) {
+        emit('message-deleted', props.message.id)
       }
       hideContextMenu()
     }
 
-    // Close context menu when clicking outside
     const handleClickOutside = (event) => {
       if (messageElement.value && !messageElement.value.contains(event.target)) {
         hideContextMenu()
@@ -94,20 +99,21 @@ export default {
 
     onMounted(() => {
       document.addEventListener('click', handleClickOutside)
+      document.addEventListener('contextmenu', hideContextMenu)
     })
 
     onUnmounted(() => {
       document.removeEventListener('click', handleClickOutside)
+      document.removeEventListener('contextmenu', hideContextMenu)
     })
 
     return {
       isOwnMessage,
       formatDate,
       contextMenuVisible,
-      contextMenuX,
-      contextMenuY,
+      contextMenuPosition,
       messageElement,
-      showContextMenu,
+      handleContextMenu,
       editMessage,
       deleteMessage
     }
@@ -155,14 +161,15 @@ export default {
 .context-menu button {
   display: block;
   width: 100%;
-  padding: 8px 16px;
+  padding: 8px 12px;
   text-align: left;
   background: none;
   border: none;
   cursor: pointer;
+  font-size: 14px;
 }
 
 .context-menu button:hover {
-  background-color: #f5f5f5;
+  background-color: #f0f0f0;
 }
 </style>
