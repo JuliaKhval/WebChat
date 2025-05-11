@@ -20,10 +20,10 @@ apiClient.interceptors.request.use(config => {
 export default {
     // Auth
     login(username, password) {
-        return apiClient.post('/user/login', { userName: username, password })
+        return apiClient.post('/user/login', {username, password })
     },
     register(username, password) {
-        return apiClient.post('/user/register', { userName: username, password })
+        return apiClient.post('/user/register', {username, password })
     },
 
     // Chats
