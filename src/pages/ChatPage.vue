@@ -204,10 +204,16 @@ export default {
 }
 
 .message-input {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 100%;
   display: flex;
   padding: 15px;
+  background: white;
   border-top: 1px solid #e0e0e0;
 }
+
 
 .message-input input {
   flex: 1;
