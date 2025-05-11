@@ -12,7 +12,7 @@
           Чат с {{ currentChat.receiverUsername }}
         </div>
 
-        <div class="messages">
+        <div ref="messagesContainer" class="messages">
           <Message
               v-for="message in currentMessages"
               :key="message.id"
@@ -41,9 +41,8 @@
     </div>
   </div>
 </template>
-
 <script>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { useAuthStore } from '../stores/auth'
 import api from '../api'
 import Message from '../components/ChatMessage.vue'
@@ -57,6 +56,7 @@ export default {
     const currentChat = ref(null)
     const messageContent = ref('')
     const messages = ref({})
+    const messagesContainer = ref(null)
 
     const loadChats = async () => {
       try {
@@ -73,23 +73,7 @@ export default {
         await loadMessages(chat.id)
       }
     }
-    const editMessage = async (chatId, messageId, newText) => {
-      try {
-        await api.editMessage(chatId, messageId, { content: newText })
-        await loadMessages(chatId)
-      } catch (error) {
-        console.error('Ошибка редактирования сообщения:', error)
-      }
-    }
 
-    const deleteMessage = async (chatId, messageId) => {
-      try {
-        await api.deleteMessage(chatId, messageId)
-        await loadMessages(chatId)
-      } catch (error) {
-        console.error('Ошибка удаления сообщения:', error)
-      }
-    }
     const loadMessages = async (chatId) => {
       try {
         const response = await api.getChatMessages(chatId)
@@ -97,6 +81,13 @@ export default {
           ...messages.value,
           [chatId]: response.data
         }
+
+        nextTick(() => {
+          messagesContainer.value?.scrollTo({
+            top: messagesContainer.value.scrollHeight,
+            behavior: "smooth"
+          })
+        })
       } catch (error) {
         console.error('Ошибка загрузки сообщений:', error)
       }
@@ -114,8 +105,33 @@ export default {
 
         await loadMessages(currentChat.value.id)
         messageContent.value = ''
+
+        nextTick(() => {
+          messagesContainer.value?.scrollTo({
+            top: messagesContainer.value.scrollHeight,
+            behavior: "smooth"
+          })
+        })
       } catch (error) {
         console.error('Ошибка отправки сообщения:', error)
+      }
+    }
+
+    const editMessage = async (chatId, messageId, newText) => {
+      try {
+        await api.editMessage(chatId, messageId, { content: newText })
+        await loadMessages(chatId)
+      } catch (error) {
+        console.error('Ошибка редактирования сообщения:', error)
+      }
+    }
+
+    const deleteMessage = async (chatId, messageId) => {
+      try {
+        await api.deleteMessage(chatId, messageId)
+        await loadMessages(chatId)
+      } catch (error) {
+        console.error('Ошибка удаления сообщения:', error)
       }
     }
 
@@ -135,20 +151,20 @@ export default {
       currentChat,
       messageContent,
       currentMessages,
+      messagesContainer,
       openChat,
       sendMessage,
       editMessage,
-      deleteMessage // <-- новый
+      deleteMessage
     }
   }
 }
 </script>
 
-
 <style scoped>
 .chat-app {
   display: flex;
-  height: 100%;
+  height: 100vh;
 }
 
 .chat-window {
