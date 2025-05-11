@@ -47,7 +47,7 @@ import { useAuthStore } from '../stores/auth'
 import api from '../api'
 import Message from '../components/ChatMessage.vue'
 import UserList from '../components/UserList.vue'
-import { signalr } from '../api/signalr.js'
+import {signalr, useChatHub} from '../api/signalr.js'
 
 export default {
   components: { Message, UserList },
@@ -168,11 +168,11 @@ export default {
       await startConnection()
       await loadChats()
 
-      onReceiveMessage((chatId, userId, messageText) => {
+      onReceiveMessage((chatId, sender, messageText) => {
         if (+chatId === +currentChat.value?.id) {
           messages.value[currentChat.value.id].push({
-            id: Date.now(), // временный ID, можно заменить на реальный, если сервер вернёт
-            senderId: userId,
+
+            sender: currentChat.value.name,
             content: messageText,
             timestamp: new Date(),
             isEdited: false
