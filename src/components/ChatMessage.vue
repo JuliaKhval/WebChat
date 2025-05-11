@@ -1,13 +1,11 @@
 <template>
-  <div :class="['message', { 'own-message': isOwnMessage }]">
+  <div
+      :class="['message', { 'own-message': isOwnMessage }]"
+      @contextmenu.prevent="toggleMenu"
+  >
     <div class="message-header">
       <strong>{{ message.sender }}</strong>
       <span>{{ formatDate(message.createdDataTime) }}</span>
-
-      <!-- Кнопка контекстного меню -->
-      <button v-if="isOwnMessage" class="context-menu-btn" @click="toggleMenu">
-        ⋮
-      </button>
     </div>
 
     <div class="message-content">
@@ -23,7 +21,10 @@
 </template>
 
 <script>
+
 import { computed, ref } from 'vue'
+import { useAuthStore } from '@/stores/auth'
+const authStore = useAuthStore()
 
 export default {
   props: {
@@ -45,8 +46,12 @@ export default {
     }
   },
   setup(props) {
-    const isOwnMessage = computed(() => props.message.sender === props.currentUserId)
     const showContextMenu = ref(false)
+
+    // Определяем, своё ли сообщение
+    const isOwnMessage = computed(() => {
+      return props.message.sender === authStore.currentUser.username
+    })
 
     const toggleMenu = () => {
       showContextMenu.value = !showContextMenu.value
@@ -94,8 +99,14 @@ export default {
   border-radius: 8px;
   background-color: #f9f9f9;
   max-width: 70%;
+  align-self: flex-start; /* по умолчанию слева */
+  margin-bottom: 10px;
 }
 
+.own-message {
+  align-self: flex-end; /* мои справа */
+  background-color: #dcf8c6;
+}
 
 .message-header {
   display: flex;
@@ -103,13 +114,6 @@ export default {
   align-items: center;
   font-size: 0.9em;
   margin-bottom: 5px;
-}
-
-.context-menu-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-size: 1.2em;
 }
 
 .context-menu {
@@ -121,6 +125,7 @@ export default {
   border-radius: 4px;
   z-index: 10;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  min-width: 120px;
 }
 
 .context-menu button {
