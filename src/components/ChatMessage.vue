@@ -35,44 +35,38 @@ export default {
       required: true
     }
   },
-  emits: ['edit', 'delete'], // ✅ Это важно — объявляем события для родителя
-  setup(props, { emit }) { // ✅ Получаем emit из контекста
+  emits: ['edit', 'delete'],
+  setup(props, { emit }) {
     const authStore = useAuthStore()
-    const showContextMenu = ref(false)
 
-    // --- Проверяем, своё ли сообщение ---
     const isOwnMessage = computed(() => {
-      return String(props.message.sender) === String(authStore.currentUser.username)
+      return String(props.message.sender) === String(authStore.currentUser.id)
     })
 
-    // --- Меню ---
+    const showContextMenu = ref(false)
+
     const toggleMenu = () => {
       showContextMenu.value = !showContextMenu.value
     }
 
-    // --- Редактирование ---
     const editMessage = () => {
       const newText = prompt('Измените сообщение:', props.message.content)
-      if (newText && newText.trim() !== props.message.content) {
-        emit('edit', newText) // ✅ Вызываем событие `@edit` в родителе
+      if (newText && newText.trim()) {
+        emit('edit', newText)
       }
     }
 
-    // --- Удаление ---
     const deleteMessage = () => {
-      if (confirm('Вы уверены, что хотите удалить это сообщение?')) {
-        emit('delete') // ✅ Вызываем событие `@delete` в родителе
+      if (confirm('Удалить?')) {
+        emit('delete')
       }
     }
 
-    // --- Формат даты ---
     const formatDate = (dateString) => {
-      return new Date(dateString).toLocaleTimeString([], {
+      return dateString ? new Date(dateString).toLocaleTimeString([], {
         hour: '2-digit',
-        minute: '2-digit',
-        day: '2-digit',
-        month: '2-digit'
-      })
+        minute: '2-digit'
+      }) : ''
     }
 
     return {

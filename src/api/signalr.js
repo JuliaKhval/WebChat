@@ -3,11 +3,11 @@ import * as signalR from '@microsoft/signalr'
 let connection = null
 
 export function initSignalRConnection() {
-    const token = sessionStorage.getItem("token")
+    const token = localStorage.getItem('token')
 
     connection = new signalR.HubConnectionBuilder()
         .withUrl("https://messengertester.somee.com/chatHub", {
-            accessTokenFactory: () => token,
+            accessTokenFactory: () => token
         })
         .withAutomaticReconnect()
         .build()
@@ -36,15 +36,17 @@ export async function safeInvoke(methodName, ...args) {
     }
 }
 
-// Подписки на события
+// Слушаем новые сообщения
 export function onReceiveMessage(callback) {
     connection.on('ReceiveMessage', callback)
 }
 
+// Слушаем редактирование
 export function onMessageEdited(callback) {
     connection.on('MessageEdited', callback)
 }
 
+// Слушаем удаление
 export function onMessageDeleted(callback) {
     connection.on('MessageDeleted', callback)
 }
