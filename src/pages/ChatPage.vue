@@ -134,9 +134,8 @@ const sendMessage = async () => {
   if (!messageContent.value.trim() || !currentChat.value) return
 
   try {
-    await api.sendMessage(currentChat.value.id, authStore.currentUser.id, {
-      content: messageContent.value
-    })
+    await api.sendMessage(currentChat.value.id, authStore.currentUser.id,messageContent.value
+    )
     messageContent.value = ''
   } catch (error) {
     console.error('Ошибка отправки:', error)
