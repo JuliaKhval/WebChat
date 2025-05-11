@@ -1,17 +1,20 @@
 <template>
   <div class="chat-app">
+    <!-- Список чатов -->
     <UserList
         :chats="userChats"
         :selected-chat="currentChat"
         @select-chat="openChat"
     />
 
+    <!-- Окно чата -->
     <div class="chat-window">
       <div v-if="currentChat" class="active-chat">
         <div class="chat-header">
           Чат с {{ currentChat.receiverUsername }}
         </div>
 
+        <!-- Контейнер сообщений -->
         <div ref="messagesContainer" class="messages">
           <Message
               v-for="message in currentMessages"
@@ -23,30 +26,32 @@
           />
         </div>
 
+        <!-- Ввод нового сообщения -->
         <div class="message-input">
           <input
               v-model="messageContent"
               placeholder="Введите сообщение..."
               @keyup.enter="sendMessage"
           >
-          <button @click="sendMessage">
-            Отправить
-          </button>
+          <button @click="sendMessage">Отправить</button>
         </div>
       </div>
 
+      <!-- Если нет выбранного чата -->
       <div v-else class="no-chat">
         <p>Выберите чат для начала общения</p>
       </div>
     </div>
   </div>
 </template>
+
 <script>
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { useAuthStore } from '../stores/auth'
 import api from '../api'
 import Message from '../components/ChatMessage.vue'
 import UserList from '../components/UserList.vue'
+import { sendMessageToHub, onNewMessage } from '../api/signalr'
 
 export default {
   components: { Message, UserList },
@@ -58,6 +63,7 @@ export default {
     const messages = ref({})
     const messagesContainer = ref(null)
 
+    // --- Загрузка списка чатов ---
     const loadChats = async () => {
       try {
         const response = await api.getUserChats(authStore.currentUser.id)
@@ -67,6 +73,7 @@ export default {
       }
     }
 
+    // --- Открытие чата и загрузка сообщений ---
     const openChat = async (chat) => {
       currentChat.value = chat
       if (!messages.value[chat.id]) {
@@ -74,6 +81,7 @@ export default {
       }
     }
 
+    // --- Загрузка сообщений из API ---
     const loadMessages = async (chatId) => {
       try {
         const response = await api.getChatMessages(chatId)
@@ -83,46 +91,53 @@ export default {
         }
 
         nextTick(() => {
-          messagesContainer.value?.scrollTo({
-            top: messagesContainer.value.scrollHeight,
-            behavior: "smooth"
-          })
+          scrollToBottom()
         })
       } catch (error) {
         console.error('Ошибка загрузки сообщений:', error)
       }
     }
 
-    const sendMessage = async () => {
-      if (!messageContent.value.trim() || !currentChat.value) return
+    // --- Отправка сообщения через SignalR ---
+    const sendMessage = () => {
+      const chatId = currentChat.value?.id
+      const userId = authStore.currentUser.id
+      const content = messageContent.value.trim()
 
-      try {
-        await api.sendMessage(
-            currentChat.value.id,
-            authStore.currentUser.id,
-            messageContent.value
-        )
+      if (!content || !chatId) return
 
-        await loadMessages(currentChat.value.id)
-        messageContent.value = ''
+      // Отправляем через SignalR
+      sendMessageToHub(chatId, userId, content)
 
-        nextTick(() => {
-          messagesContainer.value?.scrollTo({
-            top: messagesContainer.value.scrollHeight,
-            behavior: "smooth"
-          })
-        })
-      } catch (error) {
-        console.error('Ошибка отправки сообщения:', error)
+      // Локально добавляем сразу
+      const localMessage = {
+        id: Date.now(),
+        chatId,
+        sender: authStore.currentUser.username,
+        content,
+        createdDataTime: new Date().toISOString()
+      }
+
+      messages.value[chatId] = [...(messages.value[chatId] || []), localMessage]
+      messageContent.value = ''
+
+      nextTick(scrollToBottom)
+    }
+
+    // --- Прокрутка вниз ---
+    const scrollToBottom = () => {
+      if (messagesContainer.value) {
+        messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
       }
     }
 
+    // --- Редактирование и удаление ---
     const editMessage = async (chatId, messageId, newText) => {
       try {
         await api.editMessage(chatId, messageId, { content: newText })
         await loadMessages(chatId)
       } catch (error) {
-        console.error('Ошибка редактирования сообщения:', error)
+        console.error('Ошибка редактирования:', error)
       }
     }
 
@@ -131,18 +146,34 @@ export default {
         await api.deleteMessage(chatId, messageId)
         await loadMessages(chatId)
       } catch (error) {
-        console.error('Ошибка удаления сообщения:', error)
+        console.error('Ошибка удаления:', error)
       }
     }
 
+    // --- Текущие сообщения для отображения ---
     const currentMessages = computed(() => {
       return currentChat.value
           ? messages.value[currentChat.value.id] || []
           : []
     })
 
+    // --- Подписываемся на новые сообщения ---
     onMounted(() => {
       loadChats()
+
+      onNewMessage((newMessage) => {
+        const chatId = newMessage.chatId
+
+        // Если это наш чат — добавляем сообщение
+        if (currentChat.value?.id === chatId) {
+          messages.value = {
+            ...messages.value,
+            [chatId]: [...(messages.value[chatId] || []), newMessage]
+          }
+
+          nextTick(scrollToBottom)
+        }
+      })
     })
 
     return {
@@ -164,7 +195,7 @@ export default {
 <style scoped>
 .chat-app {
   display: flex;
-  height: 100vh;
+  height: calc(100vh - 60px);
 }
 
 .chat-window {
@@ -201,7 +232,6 @@ export default {
   display: flex;
   flex-direction: column;
   gap: 10px;
-
 }
 
 .message-input {
