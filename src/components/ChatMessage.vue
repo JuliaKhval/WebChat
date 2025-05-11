@@ -88,7 +88,7 @@ export default {
 
     // --- Отладка ---
     console.log('message.sender:', props.message.sender)
-    console.log('authStore currentUser.id:', authStore.currentUser?.id)
+    console.log('authStore currentUser.id:', authStore.currentUser.username)
     console.log('isOwnMessage:', isOwnMessage.value)
 
     // --- Возвращаем всё в шаблон ---
