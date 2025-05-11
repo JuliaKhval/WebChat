@@ -1,31 +1,29 @@
 <template>
-  <div
-      :class="['message', { 'own-message': isOwnMessage }]"
-      @contextmenu.prevent="showContextMenu($event)"
-      ref="messageElement"
-  >
+  <div :class="['message', { 'own-message': isOwnMessage }]">
     <div class="message-header">
-      <strong>{{ message.senderUsername || message.sender }}</strong>
+      <strong>{{ message.sender }}</strong>
       <span>{{ formatDate(message.createdDataTime) }}</span>
+
+      <!-- Кнопка контекстного меню -->
+      <button v-if="isOwnMessage" class="context-menu-btn" @click="toggleMenu">
+        ⋮
+      </button>
     </div>
+
     <div class="message-content">
       {{ message.content }}
     </div>
 
-    <div
-        v-if="contextMenuVisible"
-        class="context-menu"
-        :style="{ top: contextMenuY + 'px', left: contextMenuX + 'px' }"
-        @click.stop
-    >
-      <button v-if="isOwnMessage" @click="editMessage">Изменить</button>
-      <button v-if="isOwnMessage" @click="deleteMessage">Удалить</button>
+    <!-- Контекстное меню -->
+    <div v-if="showContextMenu" class="context-menu">
+      <button @click="editMessage">Редактировать</button>
+      <button @click="deleteMessage">Удалить</button>
     </div>
   </div>
 </template>
 
 <script>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { computed, ref } from 'vue'
 
 export default {
   props: {
@@ -37,18 +35,35 @@ export default {
       type: [String, Number],
       required: true
     },
-    connection: {
-      type: Object,
+    onEdit: {
+      type: Function,
+      required: true
+    },
+    onDelete: {
+      type: Function,
       required: true
     }
   },
-  emits: ['message-edited', 'message-deleted'],
-  setup(props, { emit }) {
-    const isOwnMessage = computed(() => props.message.senderId === props.currentUserId)
-    const contextMenuVisible = ref(false)
-    const contextMenuX = ref(0)
-    const contextMenuY = ref(0)
-    const messageElement = ref(null)
+  setup(props) {
+    const isOwnMessage = computed(() => props.message.sender === props.currentUserId)
+    const showContextMenu = ref(false)
+
+    const toggleMenu = () => {
+      showContextMenu.value = !showContextMenu.value
+    }
+
+    const editMessage = () => {
+      const newText = prompt('Измените сообщение:', props.message.content)
+      if (newText && newText.trim() !== props.message.content) {
+        props.onEdit(newText)
+      }
+    }
+
+    const deleteMessage = () => {
+      if (confirm('Вы уверены, что хотите удалить это сообщение?')) {
+        props.onDelete()
+      }
+    }
 
     const formatDate = (dateString) => {
       return new Date(dateString).toLocaleTimeString([], {
@@ -59,60 +74,13 @@ export default {
       })
     }
 
-    const showContextMenu = (event) => {
-      if (!isOwnMessage.value) return
-
-      contextMenuX.value = event.clientX
-      contextMenuY.value = event.clientY
-      contextMenuVisible.value = true
-    }
-
-    const hideContextMenu = () => {
-      contextMenuVisible.value = false
-    }
-
-    const editMessage = () => {
-      const newText = prompt('Изменить сообщение:', props.message.content)
-      if (newText && newText.trim() && newText !== props.message.content) {
-        emit('message-edited', {
-          messageId: props.message.id,
-          newText: newText
-        })
-      }
-      hideContextMenu()
-    }
-
-    const deleteMessage = () => {
-      if (confirm('Вы уверены, что хотите удалить это сообщение?')) {
-        emit('message-deleted', props.message.id)
-      }
-      hideContextMenu()
-    }
-
-    const handleClickOutside = (event) => {
-      if (messageElement.value && !messageElement.value.contains(event.target)) {
-        hideContextMenu()
-      }
-    }
-
-    onMounted(() => {
-      document.addEventListener('click', handleClickOutside)
-    })
-
-    onUnmounted(() => {
-      document.removeEventListener('click', handleClickOutside)
-    })
-
     return {
       isOwnMessage,
-      formatDate,
-      contextMenuVisible,
-      contextMenuX,
-      contextMenuY,
-      messageElement,
       showContextMenu,
+      toggleMenu,
       editMessage,
-      deleteMessage
+      deleteMessage,
+      formatDate
     }
   }
 }
@@ -120,52 +88,56 @@ export default {
 
 <style scoped>
 .message {
-  margin: 10px 0;
-  padding: 10px;
-  border-radius: 5px;
-  background: #f1f1f1;
-  max-width: 70%;
-  align-self: flex-start;
   position: relative;
+  border: 1px solid #eee;
+  padding: 10px;
+  border-radius: 8px;
+  background-color: #f9f9f9;
+  max-width: 70%;
 }
 
-.message.own-message {
+.own-message {
   align-self: flex-end;
-  background: #e3f2fd;
+  background-color: #dcf8c6;
 }
 
 .message-header {
   display: flex;
   justify-content: space-between;
+  align-items: center;
+  font-size: 0.9em;
   margin-bottom: 5px;
-  font-size: 0.8em;
-  color: #666;
 }
 
-.message-content {
-  word-wrap: break-word;
+.context-menu-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.2em;
 }
 
 .context-menu {
-  position: fixed;
+  position: absolute;
+  right: 10px;
+  top: 30px;
   background: white;
-  border: 1px solid #ddd;
+  border: 1px solid #ccc;
   border-radius: 4px;
-  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-  z-index: 1000;
+  z-index: 10;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 .context-menu button {
   display: block;
   width: 100%;
-  padding: 8px 16px;
   text-align: left;
-  background: none;
+  padding: 8px 12px;
   border: none;
+  background: none;
   cursor: pointer;
 }
 
 .context-menu button:hover {
-  background-color: #f5f5f5;
+  background-color: #f0f0f0;
 }
 </style>

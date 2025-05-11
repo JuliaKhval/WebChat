@@ -10,9 +10,10 @@ const apiClient = axios.create({
 })
 
 apiClient.interceptors.request.use(config => {
-    const token = sessionStorage.getItem('token')
-    if (token) {
-        config.headers.Authorization = `Bearer ${token}`
+    const authData = sessionStorage.getItem('auth')
+    if (authData) {
+        const parsed = JSON.parse(authData)
+        config.headers.Authorization = `Bearer ${parsed.token}`
     }
     return config
 })
