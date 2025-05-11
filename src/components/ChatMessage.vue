@@ -46,8 +46,10 @@ export default {
     }
   },
   setup(props) {
+
+
     const isOwnMessage = computed(() => {
-      return true
+      return props.message.sender === authStore.currentUser.username
     })
 
     const showContextMenu = ref(false)
