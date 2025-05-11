@@ -10,20 +10,21 @@ const apiClient = axios.create({
 })
 
 apiClient.interceptors.request.use(config => {
-    const token = sessionStorage.getItem('token')
-    if (token) {
-        config.headers.Authorization = `Bearer ${token}`
+    const authData = sessionStorage.getItem('auth')
+    if (authData) {
+        const parsed = JSON.parse(authData)
+        config.headers.Authorization = `Bearer ${parsed.token}`
     }
     return config
 })
 
 export default {
     // Auth
-    login(userName, password) {
-        return apiClient.post('/user/login', { userName, password })
+    login(username, password) {
+        return apiClient.post('/user/login', { username, password })
     },
-    register(userName, password) {
-        return apiClient.post('/user/register', { userName, password })
+    register(username, password) {
+        return apiClient.post('/user/register', { username, password })
     },
 
     // Chats
@@ -39,9 +40,9 @@ export default {
         return apiClient.post(`/message/${chatId}/messages/${userId}/Add`, { content })
     },
     editMessage(chatId, messageId, newText) {
-        return apiClient.put(`/message/${chatId}/messages/${messageId}/Edit`, newText)
+        return apiClient.put(`/message/${chatId}/messages/${messageId}`, { text: newText })
     },
     deleteMessage(chatId, messageId) {
-        return apiClient.delete(`/message/${chatId}/messages/${messageId}/Delete`)
+        return apiClient.delete(`/message/${chatId}/messages/${messageId}`)
     }
 }
