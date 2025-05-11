@@ -1,5 +1,9 @@
 <template>
-  <div :class="['message', { 'own-message': isOwnMessage }]">
+  <div
+      :class="['message', { 'own-message': isOwnMessage }]"
+      @contextmenu.prevent="showContextMenu($event)"
+      :data-message-id="message.id"
+  >
     <div class="message-header">
       <strong>{{ message.sender }}</strong>
       <span>{{ formatDate(message.createdDataTime) }}</span>
@@ -12,20 +16,19 @@
 
 <script>
 import { computed } from 'vue'
-
 export default {
   props: {
     message: {
       type: Object,
       required: true
     },
-    currentUserId: {
+    currentUserUserId: {
       type: [String, Number],
       required: true
     }
   },
-  setup(props) {
-    const isOwnMessage = computed(() => props.message.sender === props.currentUserId)
+  setup(props, { emit }) {
+    const isOwnMessage = computed(() => props.message.userId === props.currentUserUserId)
 
     const formatDate = (dateString) => {
       return new Date(dateString).toLocaleTimeString([], {
@@ -36,9 +39,19 @@ export default {
       })
     }
 
+    const showContextMenu = (event) => {
+      event.preventDefault()
+      emit('show-context-menu', {
+        x: event.clientX,
+        y: event.clientY,
+        message: props.message
+      })
+    }
+
     return {
       isOwnMessage,
-      formatDate
+      formatDate,
+      showContextMenu
     }
   }
 }
@@ -52,13 +65,13 @@ export default {
   background: #f1f1f1;
   max-width: 70%;
   align-self: flex-start;
+  position: relative;
+  cursor: pointer;
 }
-
 .message.own-message {
   align-self: flex-end;
   background: #e3f2fd;
 }
-
 .message-header {
   display: flex;
   justify-content: space-between;
@@ -66,7 +79,6 @@ export default {
   font-size: 0.8em;
   color: #666;
 }
-
 .message-content {
   word-wrap: break-word;
 }

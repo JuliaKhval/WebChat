@@ -16,8 +16,7 @@
               :key="message.id"
               :message="message"
               :current-user-id="authStore.currentUser.id"
-              @edit-message="handleEditMessage(message)"
-              @delete-message="handleDeleteMessage(message)"
+              @show-context-menu="showContextMenu"
           />
         </div>
         <div class="message-input">
@@ -41,14 +40,14 @@
         class="context-menu"
         :style="{ top: contextMenu.y + 'px', left: contextMenu.x + 'px' }"
     >
-      <div @click="contextMenu.editHandler">Изменить</div>
-      <div @click="contextMenu.deleteHandler">Удалить</div>
+      <div @click="handleEditMessage">Изменить</div>
+      <div @click="handleDeleteMessage">Удалить</div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '../stores/auth'
 import api from '../api'
 import Message from '../components/ChatMessage.vue'
@@ -66,10 +65,7 @@ const messageInput = ref(null)
 // SignalR Connection
 const connection = new signalR.HubConnectionBuilder()
     .withUrl("https://messengertester.somee.com/chatHub", {
-      accessTokenFactory: () => {
-        const authData = sessionStorage.getItem('auth')
-        return authData ? JSON.parse(authData).token : null
-      }
+      accessTokenFactory: () => localStorage.getItem("token")
     })
     .build()
 
@@ -78,19 +74,15 @@ const contextMenu = ref({
   show: false,
   x: 0,
   y: 0,
-  editHandler: null,
-  deleteHandler: null
+  message: null
 })
 
-// Загрузка чатов
-const loadChats = async () => {
-  try {
-    const response = await api.getUserChats(authStore.currentUser.id)
-    userChats.value = response.data
-  } catch (error) {
-    console.error('Ошибка загрузки чатов:', error)
-  }
-}
+// Текущие сообщения
+const currentMessages = computed(() => {
+  return currentChat.value
+      ? messages.value[currentChat.value.id] || []
+      : []
+})
 
 // Открытие чата
 const openChat = async (chat) => {
@@ -99,7 +91,6 @@ const openChat = async (chat) => {
     await loadMessages(chat.id)
   }
 
-  // Присоединяемся к чату через SignalR
   try {
     await connection.invoke("JoinChat", chat.id.toString(), authStore.currentUser.id.toString())
   } catch (err) {
@@ -120,13 +111,6 @@ const loadMessages = async (chatId) => {
   }
 }
 
-// Текущие сообщения
-const currentMessages = computed(() => {
-  return currentChat.value
-      ? messages.value[currentChat.value.id] || []
-      : []
-})
-
 // Отправка сообщения через SignalR
 const sendMessage = async () => {
   if (!messageContent.value.trim() || !currentChat.value) return
@@ -139,66 +123,30 @@ const sendMessage = async () => {
         messageContent.value
     )
     messageContent.value = ''
-    focusInput()
   } catch (error) {
     console.error('Ошибка отправки сообщения:', error)
   }
 }
 
-// Фокус на поле ввода
-const focusInput = () => {
-  nextTick(() => {
-    messageInput.value.focus()
-  })
-}
-
-// Обработчики контекстного меню
-const handleEditMessage = (message) => {
-  const newText = prompt('Редактировать сообщение', message.content)
-  if (newText && newText.trim()) {
-    connection.invoke('EditMessage', message.chatId, message.id, newText)
-  }
-}
-
-const handleDeleteMessage = (message) => {
-  if (confirm('Вы уверены, что хотите удалить это сообщение?')) {
-    connection.invoke('DeleteMessage', message.chatId, message.id)
-  }
-}
-
-// Показ контекстного меню
-const showMessageContextMenu = (event, message) => {
-  event.preventDefault()
-  contextMenu.value = {
-    show: true,
-    x: event.clientX,
-    y: event.clientY,
-    editHandler: () => handleEditMessage(message),
-    deleteHandler: () => handleDeleteMessage(message)
-  }
-}
-
-// Скрываем меню при клике вне области
-document.addEventListener('click', () => {
-  contextMenu.value.show = false
-})
-
-// Обновление списка сообщений из SignalR
+// Обработчик событий от SignalR
 const setupSignalREvents = () => {
-  connection.on("ReceiveMessage", (chatId, userId, content) => {
+  // Получено новое сообщение
+  connection.on("ReceiveMessage", (chatId, userId, message) => {
     if (chatId === currentChat.value?.id) {
-      const newMessage = {
-        id: Math.random().toString(36).substr(2, 9), // фейковый ID
-        chatId,
-        userId,
-        content,
-        createdDataTime: new Date().toISOString()
-      }
-      messages.value[chatId] = [...(messages.value[chatId] || []), newMessage]
-      scrollToBottom()
+      messages.value[chatId] = [
+        ...(messages.value[chatId] || []),
+        {
+          id: message.id,
+          chatId: chatId,
+          userId: userId,
+          content: message.content,
+          createdDataTime: message.createdDataTime || new Date().toISOString()
+        }
+      ]
     }
   })
 
+  // Сообщение изменено
   connection.on("MessageEdited", (chatId, messageId, newText) => {
     if (chatId === currentChat.value?.id) {
       const msgIndex = messages.value[chatId].findIndex(m => m.id === messageId)
@@ -208,6 +156,7 @@ const setupSignalREvents = () => {
     }
   })
 
+  // Сообщение удалено
   connection.on("MessageDeleted", (chatId, messageId) => {
     if (chatId === currentChat.value?.id) {
       messages.value[chatId] = messages.value[chatId].filter(m => m.id !== messageId)
@@ -215,24 +164,58 @@ const setupSignalREvents = () => {
   })
 }
 
-// Прокрутка вниз
-const scrollToBottom = () => {
-  nextTick(() => {
-    if (messagesContainer.value) {
-      messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
+// Показ контекстного меню
+const showContextMenu = (payload) => {
+  contextMenu.value = {
+    show: true,
+    x: payload.x,
+    y: payload.y,
+    message: payload.message
+  }
+}
+
+// Редактировать сообщение
+const handleEditMessage = () => {
+  if (contextMenu.value.message) {
+    const newText = prompt('Редактировать сообщение:', contextMenu.value.message.content)
+    if (newText && newText.trim()) {
+      connection.invoke(
+          'EditMessage',
+          contextMenu.value.message.chatId,
+          contextMenu.value.message.id,
+          newText
+      )
     }
-  })
+    contextMenu.value.show = false
+  }
+}
+
+// Удалить сообщение
+const handleDeleteMessage = () => {
+  if (contextMenu.value.message && confirm('Вы уверены?')) {
+    connection.invoke(
+        'DeleteMessage',
+        contextMenu.value.message.chatId,
+        contextMenu.value.message.id
+    )
+    contextMenu.value.show = false
+  }
 }
 
 // Инициализация SignalR
 onMounted(async () => {
-  await loadChats()
   try {
     await connection.start()
     setupSignalREvents()
   } catch (err) {
     console.error('Ошибка подключения SignalR:', err)
   }
+
+  await api.getUserChats(authStore.currentUser.id).then(res => {
+    userChats.value = res.data
+  }).catch(err => {
+    console.error('Ошибка загрузки чатов:', err)
+  })
 })
 </script>
 
