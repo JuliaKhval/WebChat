@@ -5,17 +5,12 @@
   >
     <div class="message-header">
       <strong>{{ message.sender }}</strong>
-
+      <span>{{ formatDate(message.createdDataTime) }}</span>
     </div>
 
     <div class="message-content">
       {{ message.content }}
     </div>
-    <div class="message-footer">
-      <span>{{ formatDate(message.createdDataTime) }}</span>
-
-    </div>
-
 
     <!-- Контекстное меню -->
     <div v-if="showContextMenu" class="context-menu">
@@ -35,33 +30,22 @@ export default {
       type: Object,
       required: true
     },
-    currentUserId: {
+    currentUser: {
       type: [String, Number],
-      required: true
-    },
-    onEdit: {
-      type: Function,
-      required: true
-    },
-    onDelete: {
-      type: Function,
       required: true
     }
   },
-  setup(props) {
+  emits: ['edit', 'delete'], // ✅ Это важно — объявляем события для родителя
+  setup(props, { emit }) { // ✅ Получаем emit из контекста
     const authStore = useAuthStore()
     const showContextMenu = ref(false)
 
-    // --- Определяем, своё ли сообщение ---
+    // --- Проверяем, своё ли сообщение ---
     const isOwnMessage = computed(() => {
-
-      const senderId = String(props.message.sender)
-      const currentUser = String(authStore.currentUser.username)
-
-      return senderId === currentUser
+      return String(props.message.sender) === String(authStore.currentUser.username)
     })
 
-    // --- Контекстное меню ---
+    // --- Меню ---
     const toggleMenu = () => {
       showContextMenu.value = !showContextMenu.value
     }
@@ -70,40 +54,34 @@ export default {
     const editMessage = () => {
       const newText = prompt('Измените сообщение:', props.message.content)
       if (newText && newText.trim() !== props.message.content) {
-        props.onEdit(newText)
+        emit('edit', newText) // ✅ Вызываем событие `@edit` в родителе
       }
     }
 
     // --- Удаление ---
     const deleteMessage = () => {
       if (confirm('Вы уверены, что хотите удалить это сообщение?')) {
-        props.onDelete()
+        emit('delete') // ✅ Вызываем событие `@delete` в родителе
       }
     }
 
     // --- Формат даты ---
     const formatDate = (dateString) => {
-      if (!dateString) return ''
-      const date = new Date(dateString)
-      return date.toLocaleTimeString([], {
+      return new Date(dateString).toLocaleTimeString([], {
         hour: '2-digit',
-        minute: '2-digit'
-      }) + ' ' + date.toLocaleDateString()
+        minute: '2-digit',
+        day: '2-digit',
+        month: '2-digit'
+      })
     }
 
-    // --- Отладка ---
-    console.log('message.sender:', props.message.sender)
-    console.log('authStore currentUser.id:', authStore.currentUser.username)
-    console.log('isOwnMessage:', isOwnMessage.value)
-
-    // --- Возвращаем всё в шаблон ---
     return {
       isOwnMessage,
       showContextMenu,
       toggleMenu,
       editMessage,
       deleteMessage,
-      formatDate // ✅ Обязательно!
+      formatDate
     }
   }
 }
@@ -131,15 +109,10 @@ export default {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 0.8em;
+  font-size: 0.9em;
   margin-bottom: 5px;
 }
-.message-footer {
-  display: flex;
-  justify-content: flex-end;
-  font-size: 0.8em;
-  margin-bottom: 3px;
-}
+
 .context-menu {
   position: absolute;
   right: 10px;

@@ -1,31 +1,57 @@
 import * as signalR from '@microsoft/signalr'
 
-const connection = new signalR.HubConnectionBuilder()
-    .withUrl('https://messengertester.somee.com/chatHub', {
-        accessTokenFactory: () => localStorage.getItem('token')
-    })
-    .withAutomaticReconnect() // авто-переподключение
-    .build()
+let connection = null
 
-// Запуск подключения
-export async function startSignalRConnection() {
+export function initSignalRConnection() {
+    const token = localStorage.getItem('token')
+
+    connection = new signalR.HubConnectionBuilder()
+        .withUrl("https://messengertester.somee.com/chatHub ", {
+            accessTokenFactory: () => token,
+        })
+        .withAutomaticReconnect()
+        .build()
+
+    // Подключение к хабу
+    connection.start()
+        .then(() => console.log('SignalR подключён'))
+        .catch((err) => {
+            console.error('Ошибка подключения SignalR:', err)
+        })
+
+    return connection
+}
+
+// Безопасный вызов метода
+export async function safeInvoke(methodName, ...args) {
+    if (!connection || connection.state !== signalR.HubConnectionState.Connected) {
+        console.warn(`Не могу вызвать ${methodName}: SignalR не подключён`)
+        return
+    }
+
     try {
-        await connection.start()
-        console.log('SignalR подключен')
-    } catch (err) {
-        console.error('Ошибка подключения SignalR:', err)
-        setTimeout(() => startSignalRConnection(), 5000)
+        await connection.invoke(methodName, ...args)
+    } catch (error) {
+        console.error(`Ошибка при вызове ${methodName}:`, error)
     }
 }
 
-// Слушатель входящих сообщений
-export function onNewMessage(callback) {
-    connection.on('ReceiveMessage', (message) => {
-        callback(message)
-    })
+// Подписки на события
+export function onReceiveMessage(callback) {
+    connection.on('ReceiveMessage', callback)
 }
 
-// Отправка сообщения через SignalR
-export function sendMessageToHub(chatId, userId, content) {
-    connection.invoke('SendMessage', chatId, userId, content)
+export function onMessageEdited(callback) {
+    connection.on('MessageEdited', callback)
+}
+
+export function onMessageDeleted(callback) {
+    connection.on('MessageDeleted', callback)
+}
+
+// Присоединиться к группе чата
+export function joinChat(chatId, userId) {
+    if (connection && connection.state === signalR.HubConnectionState.Connected) {
+        connection.invoke('JoinChat', chatId.toString(), userId.toString())
+    }
 }

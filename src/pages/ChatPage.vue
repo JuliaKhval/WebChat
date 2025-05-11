@@ -1,20 +1,17 @@
 <template>
   <div class="chat-app">
-    <!-- Список чатов -->
     <UserList
         :chats="userChats"
         :selected-chat="currentChat"
         @select-chat="openChat"
     />
 
-    <!-- Окно чата -->
     <div class="chat-window">
       <div v-if="currentChat" class="active-chat">
         <div class="chat-header">
           Чат с {{ currentChat.receiverUsername }}
         </div>
 
-        <!-- Сообщения -->
         <div ref="messagesContainer" class="messages">
           <Message
               v-for="message in currentMessages"
@@ -23,13 +20,11 @@
               :current-user-id="authStore.currentUser.id"
               @edit="editMessage(currentChat.id, message.id, $event)"
               @delete="deleteMessage(currentChat.id, message.id)"
-          />
+           />
         </div>
 
-        <!-- Ввод нового сообщения -->
         <div class="message-input">
           <input
-              id="messageInput"
               v-model="messageContent"
               placeholder="Введите сообщение..."
               @keyup.enter="sendMessage"
@@ -38,7 +33,6 @@
         </div>
       </div>
 
-      <!-- Если чат не выбран -->
       <div v-else class="no-chat">
         <p>Выберите чат для начала общения</p>
       </div>
@@ -52,9 +46,14 @@ import { useAuthStore } from '../stores/auth'
 import api from '../api'
 import Message from '../components/ChatMessage.vue'
 import UserList from '../components/UserList.vue'
-
-// Подключение SignalR
-import * as signalR from '@microsoft/signalr'
+import {
+  initSignalRConnection,
+  safeInvoke,
+  onReceiveMessage,
+  onMessageEdited,
+  onMessageDeleted,
+  joinChat
+} from '../api/signalr'
 
 export default {
   components: { Message, UserList },
@@ -66,37 +65,29 @@ export default {
     const messages = ref({})
     const messagesContainer = ref(null)
 
-    // --- SignalR подключение ---
-    let connection = null
+    const currentUserId = authStore.currentUser?.id
 
     // --- Загрузка списка чатов ---
     const loadChats = async () => {
       try {
-        const response = await api.getUserChats(authStore.currentUser.id)
+        const response = await api.getUserChats(currentUserId)
         userChats.value = response.data
       } catch (error) {
         console.error('Ошибка загрузки чатов:', error)
       }
     }
 
-    // --- Открытие чата и загрузка сообщений ---
+    // --- Открытие чата ---
     const openChat = async (chat) => {
       currentChat.value = chat
       if (!messages.value[chat.id]) {
         await loadMessages(chat.id)
       }
 
-      // Присоединяемся к группе чата через SignalR
-      if (connection && chat.id) {
-        try {
-          await connection.invoke('JoinChat', chat.id.toString(), authStore.currentUser.id.toString())
-        } catch (err) {
-          console.error('Ошибка при присоединении к чату:', err)
-        }
-      }
+      joinChat(chat.id, currentUserId)
     }
 
-    // --- Загрузка сообщений из API ---
+    // --- Загрузка сообщений ---
     const loadMessages = async (chatId) => {
       try {
         const response = await api.getChatMessages(chatId)
@@ -111,64 +102,61 @@ export default {
       }
     }
 
-    // --- Отправка сообщения через API + SignalR ---
+    // --- Отправка сообщения ---
     const sendMessage = async () => {
       const chatId = currentChat.value?.id
-      const userId = authStore.currentUser.id
       const content = messageContent.value.trim()
 
       if (!content || !chatId) {
-        alert("Выберите чат и введите текст")
+        alert('Выберите чат и введите текст')
         return
       }
 
       try {
-        // 1️⃣ Отправляем на сервер через API
-        const res = await api.sendMessage(chatId, userId, content)
+        const res = await api.sendMessage(chatId, currentUserId, content)
 
         if (res.status === 200) {
-          messageContent.value = ''
+          const newMessage = res.data
 
-          // 2️⃣ Получаем новое сообщение от сервера
-          const newMessage = res.data // или await api.getChatMessages(chatId) если не возвращает объект
+          // Локально добавляем
           messages.value[chatId] = [...(messages.value[chatId] || []), newMessage]
-
+          messageContent.value = ''
           nextTick(scrollToBottom)
 
-          // 3️⃣ Рассылаем всем участникам через SignalR
-          connection.invoke('SendMessage', chatId, newMessage)
+          // Через SignalR рассылаем всем участникам
+          await safeInvoke('SendMessage', chatId, newMessage)
         }
       } catch (error) {
-        console.error('Ошибка отправки сообщения:', error)
-        alert("Не удалось отправить сообщение")
+        console.error('Ошибка отправки:', error)
+        alert('Не удалось отправить сообщение')
       }
     }
 
-    // --- Редактирование сообщения ---
+    // --- Редактирование ---
     const editMessage = async (chatId, messageId, newText) => {
       try {
         await api.editMessage(chatId, messageId, { content: newText })
         await loadMessages(chatId)
-        connection.invoke('EditMessage', chatId, messageId, newText)
+        await safeInvoke('EditMessage', chatId, messageId, newText)
       } catch (error) {
         console.error('Ошибка редактирования:', error)
       }
     }
 
-    // --- Удаление сообщения ---
+    // --- Удаление ---
     const deleteMessage = async (chatId, messageId) => {
-      if (!confirm("Удалить сообщение?")) return
+      if (!confirm('Удалить сообщение?')) return
 
       try {
         await api.deleteMessage(chatId, messageId)
         await loadMessages(chatId)
-        connection.invoke('DeleteMessage', chatId, messageId)
+        await safeInvoke('DeleteMessage', chatId, messageId)
       } catch (error) {
         console.error('Ошибка удаления:', error)
       }
     }
 
-    // --- Реактивные сообщения текущего чата ---
+    // --- Реактивные сообщения ---
     const currentMessages = computed(() => {
       return currentChat.value
           ? messages.value[currentChat.value.id] || []
@@ -184,48 +172,30 @@ export default {
 
     // --- Подписываемся на события SignalR ---
     onMounted(async () => {
-      await loadChats()
+      // Инициализируем подключение
+      initSignalRConnection()
 
-      // Инициализация SignalR
-      connection = new signalR.HubConnectionBuilder()
-          .withUrl("https://messengertester.somee.com/chatHub ", {
-            accessTokenFactory: () => localStorage.getItem("token")
-          })
-          .withAutomaticReconnect()
-          .build()
-
-      // При получении сообщения
-      connection.on("ReceiveMessage", (chatId, message) => {
-        if (currentChat.value?.id == chatId) {
+      // Подписываемся на события
+      onReceiveMessage((chatId, message) => {
+        if (currentChat.value?.id === chatId) {
           messages.value[chatId] = [...(messages.value[chatId] || []), message]
           nextTick(scrollToBottom)
         }
       })
 
-      // При редактировании
-      connection.on("MessageEdited", (chatId, messageId, newText) => {
+      onMessageEdited((chatId, messageId, newText) => {
         const index = messages.value[chatId]?.findIndex(m => m.id === messageId)
         if (index > -1) {
           messages.value[chatId][index].content = newText
         }
       })
 
-      // При удалении
-      connection.on("MessageDeleted", (chatId, messageId) => {
+      onMessageDeleted((chatId, messageId) => {
         messages.value[chatId] = messages.value[chatId]?.filter(m => m.id !== messageId)
       })
 
-      // Подключаемся к SignalR
-      try {
-        await connection.start()
-        console.log("SignalR подключён")
-
-        if (authStore.currentUser.id) {
-          await connection.invoke("JoinGroup", authStore.currentUser.id.toString())
-        }
-      } catch (err) {
-        console.error("Ошибка подключения к SignalR:", err)
-      }
+      // Загружаем список чатов
+      await loadChats()
     })
 
     return {
