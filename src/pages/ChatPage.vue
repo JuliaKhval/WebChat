@@ -172,7 +172,8 @@ export default {
         if (+chatId === +currentChat.value?.id) {
           messages.value[currentChat.value.id].push({
             senderId: userId,
-
+            username: authStore.currentUser.username,
+            timestamp: Date.now(),
             content: messageText,
             isEdited: false
           })
