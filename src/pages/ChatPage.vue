@@ -169,6 +169,8 @@ export default {
 
       onReceiveMessage((chatId, userId, username, messageText, time,messageId) => {
         if (+chatId === +currentChat.value?.id) {
+          console.log(time);
+          console.log(new Date(time));
           messages.value[currentChat.value.id].push({
             senderId: userId,
             sender: username,
