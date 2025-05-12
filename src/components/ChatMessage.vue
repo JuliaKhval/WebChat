@@ -66,14 +66,7 @@ export default {
     }
 
     // --- Формат даты ---
-    const formatDate = (dateString) => {
-      return new Date(dateString).toLocaleTimeString([], {
-        hour: '2-digit',
-        minute: '2-digit',
-        day: '2-digit',
-        month: '2-digit'
-      })
-    }
+
 
     return {
       isOwnMessage,
