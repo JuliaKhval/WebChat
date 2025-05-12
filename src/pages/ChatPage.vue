@@ -175,7 +175,12 @@ export default {
             senderId: userId,
             sender: username,
             content: messageText,
-            createdDataTime: new Date(time),
+            createdDataTime: new Date(time).toLocaleTimeString([], {
+              hour: '2-digit',
+              minute: '2-digit',
+              day: '2-digit',
+              month: '2-digit'
+            }),
             id: messageId,
             isEdited: false
           })
