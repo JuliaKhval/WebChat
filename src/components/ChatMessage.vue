@@ -5,7 +5,7 @@
   >
     <div class="message-header">
       <strong>{{ message.sender }}</strong>
-      <span>{{ formatDate(message.createdDataTime) }}</span>
+      <span>{{ message.createdDataTime 2 }}</span>
     </div>
 
     <div class="message-content">

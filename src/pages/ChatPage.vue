@@ -175,7 +175,7 @@ export default {
             senderId: userId,
             sender: username,
             content: messageText,
-            createdDataTime: time,
+            createdDataTime: new Date(time),
             id: messageId,
             isEdited: false
           })
@@ -183,24 +183,7 @@ export default {
           scrollToBottom()
         }
       })
-      const formatDate = (dateString) => {
-        if (!dateString) return ''
 
-        // Если уже строка в нужном формате — возвращаем её
-        if (typeof dateString === 'string' && dateString.includes(':')) {
-          return dateString
-        }
-
-        // Если это объект Date или ISO-строка
-        const date = new Date(dateString)
-        return new Intl.DateTimeFormat('ru-RU', {
-          day: '2-digit',
-          month: '2-digit',
-          year: '2-digit',
-          hour: '2-digit',
-          minute: '2-digit'
-        }).format(date)
-      }
       onMessageEdited((chatId, messageId, newContent) => {
         const chatMessages = messages.value[chatId] || []
 
