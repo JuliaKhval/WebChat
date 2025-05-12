@@ -187,7 +187,7 @@ export default {
 
         const msgIndex = chatMessages.findIndex(m => m.id === +messageId)
         if (msgIndex !== -1) {
-          chatMessages[msgIndex].content = newContent
+          chatMessages[msgIndex].content = newContent.content
           chatMessages[msgIndex].isEdited = true
         }
       })
