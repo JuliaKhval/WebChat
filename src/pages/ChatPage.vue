@@ -95,7 +95,11 @@ export default {
     const loadMessages = async (chatId) => {
       try {
         const response = await api.getChatMessages(chatId)
-        messages.value[chatId] = response.data
+        messages.value = {
+          ...messages.value,
+          [chatId]: response.data
+        }
+
         scrollToBottom()
       } catch (error) {
         console.error('Ошибка загрузки сообщений:', error)
@@ -154,7 +158,7 @@ export default {
 
     const leaveChat = async (chatId, userId) => {
       try {
-        await leaveChat(chatId, userId)
+        await useChatHub.connection.invoke('LeaveChat', chatId.toString(), userId.toString())
       } catch (error) {
         console.error('Ошибка выхода из чата:', error)
       }
@@ -164,41 +168,33 @@ export default {
       await startConnection()
       await loadChats()
 
-      onReceiveMessage((chatId, userId, messageText, messageId, timestamp) => {
-        if (+chatId !== +currentChat.value?.id) return
-
-        messages.value[currentChat.value.id].push({
-          id: messageId || Date.now(),
-          content: messageText,
-          sender: userId,
-          username: users.value[userId] || 'Загрузка...',
-          createdDataTime: timestamp || new Date().toISOString(),
-          isEdited: false
-        })
-
-        if (!users.value[userId]) {
-          loadUser(userId).then(() => {
-            // обновляем имя после загрузки
-            messages.value[currentChat.value.id].at(-1).username = users.value[userId]
+      onReceiveMessage((chatId,userId, username,datatime, messageText) => {
+        if (+chatId === +currentChat.value?.id) {
+          messages.value[currentChat.value.id].push({
+            senderId: userId,
+            senderName: username,
+            content: messageText,
+            timestamp: datatime,
+            isEdited: false
           })
-        }
 
-        scrollToBottom()
+          scrollToBottom()
+        }
       })
 
-      onMessageEdited((chatId, messageId, newText) => {
-        const chatMessages = messages.value[chatId] || []
-        const msgIndex = chatMessages.findIndex(m => m.id === +messageId)
+      onMessageEdited((messageId, newContent) => {
+        const chatMessages = messages.value[currentChat.value?.id] || []
 
+        const msgIndex = chatMessages.findIndex(m => m.id === +messageId)
         if (msgIndex !== -1) {
-          chatMessages[msgIndex].content = newText
+          chatMessages[msgIndex].content = newContent
           chatMessages[msgIndex].isEdited = true
         }
       })
 
-      onMessageDeleted((chatId, messageId) => {
-        const chatMessages = messages.value[chatId] || []
-        messages.value[chatId] = chatMessages.filter(m => m.id !== +messageId)
+      onMessageDeleted((messageId) => {
+        const chatMessages = messages.value[currentChat.value?.id] || []
+        messages.value[currentChat.value?.id] = chatMessages.filter(m => m.id !== +messageId)
       })
     })
 
