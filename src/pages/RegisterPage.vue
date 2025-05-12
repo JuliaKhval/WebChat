@@ -36,7 +36,7 @@ const handleSubmit = async () => {
     await authStore.register(username.value, password.value)
     // После успешной регистрации остаемся на странице для входа
   } catch (err) {
-    error.value = 'Ошибка регистрации: ' + "Такой пользователь уже существует"
+    error.value = 'Ошибка регистрации: ' + (err.response?.data?.message || err.message)
   }
 }
 </script>
