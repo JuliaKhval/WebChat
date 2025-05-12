@@ -64,7 +64,7 @@ export const useAuthStore = defineStore('auth', () => {
         try {
             const response = await axios.post('/user/register', { username, password })
 
-            if (response.status !== 201) {
+            if (response.status !== 200) {
                 throw new Error('Ошибка регистрации')
             }
 

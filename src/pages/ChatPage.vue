@@ -175,12 +175,7 @@ export default {
             senderId: userId,
             sender: username,
             content: messageText,
-            createdDataTime: new Date(time).toLocaleTimeString([], {
-              hour: '2-digit',
-              minute: '2-digit',
-              day: '2-digit',
-              month: '2-digit'
-            }),
+            createdDataTime: new Date(time).toLocaleString(),
             id: messageId,
             isEdited: false
           })
@@ -194,11 +189,14 @@ export default {
 
         const msgIndex = chatMessages.findIndex(m => m.id === +messageId)
         if (msgIndex !== -1) {
-          chatMessages[msgIndex].content = newContent.content
-          chatMessages[msgIndex].createdDataTime = messages.value[currentChat.value.id].createdDataTime;
-          chatMessages[msgIndex].isEdited = true
+          chatMessages[msgIndex] = {
+            ...chatMessages[msgIndex],
+            content: newContent.content,
+            isEdited: true
+          }
         }
       })
+
 
       onMessageDeleted((chatId, messageId) => {
         const chatMessages = messages.value[chatId] || []
