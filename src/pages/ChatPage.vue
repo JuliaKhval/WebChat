@@ -166,7 +166,6 @@ export default {
 
     onMounted(async () => {
       await startConnection()
-      await loadMessages(currentChat.value.id)
       await loadChats()
 
       onReceiveMessage((chatId,userId, messageText) => {
