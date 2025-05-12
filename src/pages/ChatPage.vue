@@ -65,9 +65,9 @@ export default {
       startConnection,
       joinChat,
       leaveChat,
-/*      onReceiveMessage,
+      onReceiveMessage,
       onMessageEdited,
-      onMessageDeleted*/
+      onMessageDeleted
     } = useChatHub()
 
     const loadChats = async () => {
