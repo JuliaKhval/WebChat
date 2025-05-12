@@ -167,13 +167,13 @@ export default {
       await startConnection()
       await loadChats()
 
-      onReceiveMessage((chatId, userId, username, time, messageText) => {
+      onReceiveMessage((chatId, userId, username, messageText, time) => {
         if (+chatId === +currentChat.value?.id) {
           messages.value[currentChat.value.id].push({
             senderId: userId,
             sender: username,
-            createdDataTime: new Date(time),
             content: messageText,
+            createdDataTime: new Date(time),
             isEdited: false
           })
 
