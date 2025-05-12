@@ -195,7 +195,7 @@ export default {
         const msgIndex = chatMessages.findIndex(m => m.id === +messageId)
         if (msgIndex !== -1) {
           chatMessages[msgIndex].content = newContent.content
-          chatMessages[msgIndex].createdDataTime = Date.now()
+          chatMessages[msgIndex].createdDataTime = messages.value[currentChat.value.id].createdDataTime;
           chatMessages[msgIndex].isEdited = true
         }
       })
