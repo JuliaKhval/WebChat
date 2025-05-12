@@ -64,10 +64,10 @@ export default {
     const {
       startConnection,
       joinChat,
-      sendMessage,
-      onReceiveMessage,
+      leaveChat,
+/*      onReceiveMessage,
       onMessageEdited,
-      onMessageDeleted
+      onMessageDeleted*/
     } = useChatHub()
 
     const loadChats = async () => {
@@ -81,7 +81,7 @@ export default {
 
     const openChat = async (chat) => {
       if (currentChat.value) {
-        await leaveChat(currentChat.value.id, authStore.currentUser.id)
+        await handleLeaveChat(currentChat.value.id, authStore.currentUser.id)
       }
 
       currentChat.value = chat
@@ -116,7 +116,6 @@ export default {
             authStore.currentUser.id,
             messageContent.value
         )
-
 
         messageContent.value = ''
         scrollToBottom()
@@ -156,9 +155,9 @@ export default {
       })
     }
 
-    const leaveChat = async (chatId, userId) => {
+    const handleLeaveChat = async (chatId, userId) => {
       try {
-        await useChatHub.connection.invoke('LeaveChat', chatId.toString(), userId.toString())
+        await leaveChat(chatId.toString(), userId.toString())
       } catch (error) {
         console.error('Ошибка выхода из чата:', error)
       }
@@ -182,8 +181,8 @@ export default {
         }
       })
 
-      onMessageEdited((messageId, newContent) => {
-        const chatMessages = messages.value[currentChat.value?.id] || []
+      onMessageEdited((chatId, messageId, newContent) => {
+        const chatMessages = messages.value[chatId] || []
 
         const msgIndex = chatMessages.findIndex(m => m.id === +messageId)
         if (msgIndex !== -1) {
@@ -192,8 +191,8 @@ export default {
         }
       })
 
-      onMessageDeleted((messageId) => {
-        const chatMessages = messages.value[currentChat.value?.id] || []
+      onMessageDeleted((chatId, messageId) => {
+        const chatMessages = messages.value[chatId] || []
         messages.value[currentChat.value?.id] = chatMessages.filter(m => m.id !== +messageId)
       })
     })

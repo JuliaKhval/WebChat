@@ -24,7 +24,7 @@ export function useChatHub() {
     const leaveChat = async (chatId, userId) => {
         await connection.invoke('LeaveChat', chatId.toString(), userId.toString())
     }
-
+/*
     const sendMessage = async (chatId, userId, messageContent) => {
         await connection.invoke('SendMessage', chatId.toString(), userId.toString(), messageContent)
     }
@@ -39,15 +39,15 @@ export function useChatHub() {
 
     const onMessageDeleted = (callback) => {
         connection.on('MessageDeleted', callback)
-    }
+    }*/
 
     return {
         startConnection,
         joinChat,
         leaveChat,
-        sendMessage,
+        /*sendMessage,
         onReceiveMessage,
         onMessageEdited,
-        onMessageDeleted
+        onMessageDeleted*/
     }
 }
